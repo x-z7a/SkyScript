@@ -1,0 +1,124 @@
+name: Publish Skunkcrafts Release
+description: Assemble release artifacts, generate whitelist checksums, push release branch, and publish GitHub release.
+inputs:
+  project-name:
+    description: Project folder name under build (e.g. XA-snow)
+    required: true
+  extra-files:
+    description: Optional list of additional files to copy into build/<project-name> (newline-separated, globs allowed)
+    required: false
+runs:
+  using: composite
+  steps:
+    - name: Download Build Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./download
+
+    - name: Organize Build Artifacts
+      shell: bash
+      run: |
+        set -x
+        PROJECT=${{ inputs.project-name }}
+
+        # Create directory structure
+        mkdir -p ./build/${PROJECT}/resources
+        mkdir -p ./build/${PROJECT}/win_x64/lib
+        mkdir -p ./build/${PROJECT}/lin_x64/lib
+        mkdir -p ./build/${PROJECT}/mac_x64/lib
+        mkdir -p ./build/${PROJECT}/license_ultralight
+
+        # Copy Resource
+        cp ./download/build-windows/Ultralight-SDK-1.4.0-Win64/resources/* ./build/${PROJECT}/resources/
+
+        # Copy plugin binaries
+        cp ./download/build-windows/build/win.xpl ./build/${PROJECT}/win_x64/${PROJECT}.xpl
+        cp ./download/build-linux/build/lin.xpl ./build/${PROJECT}/lin_x64/${PROJECT}.xpl
+        cp ./download/build-mac/build/mac.xpl ./build/${PROJECT}/mac_x64/${PROJECT}.xpl
+
+        # Copy Windows Ultralight runtime
+        cp ./download/build-windows/Ultralight-SDK-1.4.0-Win64/bin/*.dll ./build/${PROJECT}/win_x64/lib/
+
+        # Copy Linux Ultralight runtime
+        cp ./download/build-linux/Ultralight-SDK-1.4.0-Linux/bin/*.so ./build/${PROJECT}/lin_x64/lib/
+
+        # Copy Mac Ultralight runtime (universal dylibs)
+        cp ./download/build-mac/build/ultralight-libs/*.dylib ./build/${PROJECT}/mac_x64/lib/
+
+        # Copy ultralight EULA and LICENSE
+        cp ./download/build-windows/Ultralight-SDK-1.4.0-Win64/license/* ./build/${PROJECT}/license_ultralight
+      
+
+        ls -lR ./build/${PROJECT}
+
+    - name: Copy Extra Files (optional)
+      shell: bash
+      run: |
+        if [[ -n "${{ inputs.extra-files }}" ]]; then
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            for item in $file; do
+              cp -R "$item" "./build/${{ inputs.project-name }}/"
+            done
+          done <<< "${{ inputs.extra-files }}"
+        fi
+
+    - name: Copy Skunkcrafts Files
+      shell: bash
+      run: |
+        TAG=${GITHUB_REF##*/}
+        cp ${{ github.workspace }}/skunkcrafts_updater.cfg ${{ github.workspace }}/build/${{ inputs.project-name }}/
+        cp ${{ github.workspace }}/skunkcrafts_updater_beta.cfg ${{ github.workspace }}/build/${{ inputs.project-name }}/
+        cp ${{ github.workspace }}/skunkcrafts_updater_blacklist.txt ${{ github.workspace }}/build/${{ inputs.project-name }}/
+        sed -i '' "s/REPLACE_ME/${TAG}/g" ${{ github.workspace }}/build/${{ inputs.project-name }}/skunkcrafts_updater.cfg
+        sed -i '' "s/REPLACE_ME/${TAG}/g" ${{ github.workspace }}/build/${{ inputs.project-name }}/skunkcrafts_updater_beta.cfg
+        root=$(pwd)
+        cd ${{ github.workspace }}/build/ && zip -r ${{ inputs.project-name }}.zip ${{ inputs.project-name }} && cd $root
+
+    - shell: bash
+      run: |
+        set -euo pipefail
+        PROJECT_NAME="${{ inputs.project-name }}"
+
+        cp -r "${{ github.workspace }}/build/${PROJECT_NAME}/" release/
+
+        # create crc32 checksum for all values and write to skunkcrafts_updater_whitelist.txt
+        # format is <filename>|<crc32 checksum>
+        # include subdirectories
+        rm -f release/skunkcrafts_updater_whitelist.txt
+        find release -type f ! \( -name '*skunkcrafts_updater*' -o -path '*skunkcrafts_updater*' \) -print0 | while IFS= read -r -d '' file; do
+          checksum_hex=$(crc32 "$file")
+          # Convert hex checksum to uint32 decimal
+          checksum_decimal=$((16#$checksum_hex))
+          # Remove "release/" prefix from $file
+          modified_file="${file#release/}"
+          echo "$modified_file|$checksum_decimal" >> release/skunkcrafts_updater_whitelist.txt
+        done
+
+        TAG=${GITHUB_REF##*/}
+        TARGET_BRANCH="release"
+        if [[ $TAG == *"-test-"* ]]     # if TAG contains -test-
+        then
+            echo "This is a just a build test"
+            TARGET_BRANCH="build-test"
+        elif [[ $TAG == *"-"* ]]        # if TAG contains -
+        then
+            echo "This is a beta release"
+            TARGET_BRANCH="beta"
+        fi
+
+        git checkout -b ${TARGET_BRANCH}
+        git add release/
+        git commit -m "new ${TARGET_BRANCH} - ${TAG}"
+        git push -f -u origin ${TARGET_BRANCH}
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        body_path: ${{ github.workspace }}/${{ inputs.release-body }}
+        files: |
+          ${{ github.workspace }}/build/${{ inputs.release-zip }}
+          ${{ github.workspace }}/build/${{ inputs.project-name }}/skunkcrafts_updater.cfg
+          ${{ github.workspace }}/build/${{ inputs.project-name }}/skunkcrafts_updater_beta.cfg
+        prerelease: ${{ contains(github.ref_name, '-') }}

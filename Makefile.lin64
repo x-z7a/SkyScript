@@ -1,0 +1,60 @@
+OBJDIR=./build/lin
+
+include Makefile.common
+
+INCLUDES+=-IUltralight-SDK-1.4.0-Linux/include
+
+TARGET=build/lin.xpl
+
+HEADERS=$(wildcard *.h)
+OBJECTS:=$(addprefix $(OBJDIR)/, $(SOURCES_CPP:.cpp=.o)) $(addprefix $(OBJDIR)/, $(SOURCES_C:.c=.o))
+
+# all sources to the dep files
+DEPFILES=$(SOURCES_CPP:%.cpp=$(DEPDIR)/%.d) $(SOURCES_C:%.c=$(DEPDIR)/%.d)
+
+DEPDIR := $(OBJDIR)/.deps
+DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.d
+
+CXX=g++
+CC=gcc
+LD=g++
+
+CFLAGS+= $(DEFINES) $(OPT) -Wextra -Wall  \
+	-fdiagnostics-color -Wno-format-overflow -Wno-format-truncation \
+    -DLIN=1 \
+	$(INCLUDES) $(DEBUG) -fPIC -fno-stack-protector
+
+CXXFLAGS=$(CXXSTD) $(CFLAGS)
+
+COMPILE.cpp = $(CXX) $(CXXFLAGS) $(DEPFLAGS) -c
+COMPILE.c = $(CC) $(CFLAGS) $(DEPFLAGS) -c
+
+LDFLAGS=-shared -rdynamic -nodefaultlibs -undefined_warning -Wl,-rpath,@loader_path/lib
+LIBS=-lcurl -lz -lOpenGL \
+	-lUltralight -lUltralightCore -lWebCore -lAppCore \
+	-LUltralight-SDK-1.4.0-Linux/bin
+
+$(OBJDIR)/%.o: %.cpp $(DEPDIR)/%.d version.mak | $(DEPDIR)/src $(OBJDIR)/src
+	$(COMPILE.cpp) -o $@  $<
+
+$(OBJDIR)/%.o: %.c $(DEPDIR)/%.d version.mak | $(DEPDIR)/src $(OBJDIR)/src
+	$(COMPILE.c) -o $@  $<
+
+all: $(TARGET)
+
+XPL_DIR=/e/X-Plane-12-test
+
+$(TARGET): $(OBJECTS)
+	$(LD) -o $(TARGET) $(LDFLAGS) $(OBJECTS) $(LIBS)
+
+$(DEPDIR)/src:
+	@mkdir -p $@
+
+$(OBJDIR)/src:
+	@mkdir -p $@
+
+$(DEPFILES):
+include $(wildcard $(DEPFILES))
+
+clean:
+	rm -f ./$(OBJDIR)/*

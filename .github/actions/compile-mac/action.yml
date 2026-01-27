@@ -1,0 +1,44 @@
+name: Build macOS Plugin
+description: Compile the macOS plugin binary and upload the build artifact.
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Get xplib
+      shell: bash
+      run: |
+        git clone https://github.com/hotbso/xplib.git ../xplib
+
+    - name: Compile Makefile.mac64
+      shell: bash
+      run: |
+        set -x
+        TAG=${GITHUB_REF##*/}
+        if [ ! -z "$TAG" ]; then
+          echo "VERSION=$TAG" > version.mak
+        fi
+        make -f Makefile.mac64
+
+    - name: Create universal dylibs
+      shell: bash
+      run: |
+        mkdir -p build/ultralight-libs
+        for lib in libAppCore.dylib libUltralight.dylib libUltralightCore.dylib libWebCore.dylib; do
+          lipo -create \
+            Ultralight-SDK-1.4.0-Mac-Arm64/bin/$lib \
+            Ultralight-SDK-1.4.0-Mac-X86/bin/$lib \
+            -output build/ultralight-libs/$lib
+        done
+        ls -la build/ultralight-libs/
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-mac
+        path: |
+          build/mac.xpl
+          build/ultralight-libs/*.dylib
+          Ultralight-SDK-1.4.0-Mac-Arm64/resources/*

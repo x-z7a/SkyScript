@@ -1,0 +1,42 @@
+name: Build Windows Plugin
+description: Build Windows plugin using MSVC
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v3
+
+    - name: Get xplib
+      shell: bash
+      run: |
+        git clone https://github.com/hotbso/xplib.git ../xplib
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+
+    - name: Generate version.mak
+      shell: bash
+      run: |
+        TAG=${GITHUB_REF##*/}
+        if [ ! -z "$TAG" ]; then
+          echo "VERSION=$TAG" > version.mak
+        else
+          echo "VERSION=dev" > version.mak
+        fi
+
+    - name: Build Windows binaries
+      shell: cmd
+      run: |
+        call build-win-msvc.bat
+        dir /s build
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-windows
+        path: |
+          build/win.xpl
+          Ultralight-SDK-1.4.0-Win64/bin/*.dll
+          Ultralight-SDK-1.4.0-Win64/resources/*
+          Ultralight-SDK-1.4.0-Win64/license/*

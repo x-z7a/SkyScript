@@ -1,0 +1,60 @@
+name: Release
+
+# if the tag contains -test- the build is pushed into the build-test branch
+# so skunkcrafts does not see it
+
+# Controls when the workflow will run
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PROJECT_NAME: SkyScript
+
+permissions:
+  contents: write
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/compile-win
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/compile-lin
+
+  build-mac:
+    # The type of runner that the job will run on
+    runs-on: macos-14
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/compile-mac
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-14
+    needs: [build-windows, build-linux, build-mac]
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Publish release branch
+        uses: ./.github/actions/skunkcrafts-release
+        with:
+          project-name: ${{ env.PROJECT_NAME }}
+          release-zip: ${{ env.PROJECT_NAME }}.zip
+          release-body: README.md
+          extra-files: |
+            LICENSE
