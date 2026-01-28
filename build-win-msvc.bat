@@ -28,22 +28,28 @@ set CXXFLAGS=/std:c++20 /O2 /EHsc /MD /W3 /Zc:preprocessor /FImsvc_compat.h
 set DEFINES=/DXPLM200 /DXPLM210 /DXPLM300 /DXPLM301 /DWINDOWS /DWIN32 /DIBM=1
 set INCLUDES=/I. /I..\xplib /I%SDK%\CHeaders\XPLM /IUltralight-SDK-1.4.0-Win64\include
 
-REM Compile source files
-echo Compiling src/app.cpp...
-cl.exe /c %CXXFLAGS% %DEFINES% %INCLUDES% /Fo%OBJDIR%\src\app.obj src\app.cpp
-if errorlevel 1 exit /b 1
+REM Compile source files from src directory (including subdirectories)
+echo Compiling source files...
+for /r src %%f in (*.cpp) do (
+    echo Compiling %%f...
+    set "RELPATH=%%f"
+    set "RELPATH=!RELPATH:%CD%\=!"
+    set "OBJFILE=%OBJDIR%\!RELPATH:.cpp=.obj!"
+    for %%d in ("!OBJFILE!") do if not exist "%%~dpd" mkdir "%%~dpd"
+    cl.exe /c %CXXFLAGS% %DEFINES% %INCLUDES% /Fo"!OBJFILE!" "%%f"
+    if errorlevel 1 exit /b 1
+)
 
-echo Compiling src/plugin.cpp...
-cl.exe /c %CXXFLAGS% %DEFINES% %INCLUDES% /Fo%OBJDIR%\src\plugin.obj src\plugin.cpp
-if errorlevel 1 exit /b 1
-
-echo Compiling log_msg.cpp...
+echo Compiling ..\xplib\log_msg.cpp...
 cl.exe /c %CXXFLAGS% %DEFINES% %INCLUDES% /Fo%OBJDIR%\log_msg.obj ..\xplib\log_msg.cpp
 if errorlevel 1 exit /b 1
 
+REM Collect all object files
+set OBJS=%OBJDIR%\log_msg.obj
+for /r %OBJDIR%\src %%f in (*.obj) do set "OBJS=!OBJS! %%f"
+
 REM Link
 echo Linking...
-set OBJS=%OBJDIR%\src\app.obj %OBJDIR%\src\plugin.obj %OBJDIR%\log_msg.obj
 set LIBPATH=/LIBPATH:%SDK%\Libraries\Win /LIBPATH:Ultralight-SDK-1.4.0-Win64\lib
 set LIBS=XPLM_64.lib winhttp.lib opengl32.lib Ultralight.lib UltralightCore.lib WebCore.lib AppCore.lib
 

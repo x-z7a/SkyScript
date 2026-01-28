@@ -27,10 +27,11 @@ runs:
       run: |
         mkdir -p build/ultralight-libs
         for lib in libAppCore.dylib libUltralight.dylib libUltralightCore.dylib libWebCore.dylib; do
-          lipo -create \
-            Ultralight-SDK-1.4.0-Mac-Arm64/bin/$lib \
-            Ultralight-SDK-1.4.0-Mac-X86/bin/$lib \
-            -output build/ultralight-libs/$lib
+          # lipo -create \
+          #   Ultralight-SDK-1.4.0-Mac-Arm64/bin/$lib \
+          #   Ultralight-SDK-1.4.0-Mac-X86/bin/$lib \
+          #   -output build/ultralight-libs/$lib
+          cp Ultralight-SDK-1.4.0-Mac-Arm64/bin/$lib build/ultralight-libs/$lib
         done
         ls -la build/ultralight-libs/
 

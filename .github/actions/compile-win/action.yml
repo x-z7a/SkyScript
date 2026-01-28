@@ -29,6 +29,7 @@ runs:
       shell: cmd
       run: |
         call build-win-msvc.bat
+        if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
         dir /s build
 
     - name: Upload Build Artifact
