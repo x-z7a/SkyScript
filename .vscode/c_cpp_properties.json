@@ -5,7 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/../xplib",
-                "${workspaceFolder}/Ultralight-SDK-1.4.0-Mac-Arm64/include"
+                "${workspaceFolder}/Ultralight-SDK-1.4.0-Mac-Arm64/include",
+                "${workspaceFolder}/SDK/**"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",

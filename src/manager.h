@@ -30,6 +30,7 @@ public:
     int initialize(char *out_name, char *out_sig, char *out_desc);
     void enable();
     void disable();
+    static void menuCB([[maybe_unused]] void *menu_ref, void *item_ref);
 
     // Plugin info getters
     const char *getName() const { return name; }
@@ -53,6 +54,8 @@ private:
     char name[128] = {};
     char signature[128] = {};
     char description[256] = {};
+
+    XPLMMenuID menu_;
 
     // std::unordered_map<std::string, std::unique_ptr<App>> apps_;
 
