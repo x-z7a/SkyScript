@@ -4,6 +4,13 @@ inputs:
   project-name:
     description: Project folder name under build (e.g. XA-snow)
     required: true
+  release-body:
+    description: Path to file containing release notes body (e.g. README.md)
+    required: false
+    default: README.md
+  release-zip:
+    description: Name of the release zip file (e.g. XA-snow.zip)
+    required: true
   extra-files:
     description: Optional list of additional files to copy into build/<project-name> (newline-separated, globs allowed)
     required: false
@@ -14,6 +21,24 @@ runs:
       uses: actions/download-artifact@v4
       with:
         path: ./download
+
+    - name: setup nodejs
+      uses: actions/setup-node@v3
+      with:
+        node-version: "18"
+
+    - name: build sample apps
+      shell: bash
+      run: |
+        set -euo pipefail
+        SAMPLES_DIRS=("hello-world" "app_manager")
+        for dir in "${SAMPLES_DIRS[@]}"; do
+          echo "Building sample app in ${dir}"
+          pushd samples/${dir}
+          npm install
+          npm run build
+          popd
+        done
 
     - name: Organize Build Artifacts
       shell: bash
@@ -27,9 +52,21 @@ runs:
         mkdir -p ./build/${PROJECT}/lin_x64/lib
         mkdir -p ./build/${PROJECT}/mac_x64/lib
         mkdir -p ./build/${PROJECT}/license_ultralight
+        mkdir -p ./build/${PROJECT}/apps/hello-world
+        mkdir -p ./build/${PROJECT}/apps/app_manager
+        mkdir -p ./build/${PROJECT}/samples/hello-world
+        mkdir -p ./build/${PROJECT}/samples/app_manager
 
         # Copy Resource
         cp ./download/build-windows/Ultralight-SDK-1.4.0-Win64/resources/* ./build/${PROJECT}/resources/
+
+        # Copy Sample Apps
+        cp -R ./samples/hello-world/build/* ./build/${PROJECT}/apps/hello-world/
+        cp -R ./samples/app_manager/build/* ./build/${PROJECT}/apps/app_manager/
+
+        # Copy Sample App without node_modules, use rsync to exclude node_modules
+        rsync -av --exclude='node_modules' --exclude='build' ./samples/hello-world/ ./build/${PROJECT}/samples/hello-world/
+        rsync -av --exclude='node_modules' --exclude='build' ./samples/app_manager/ ./build/${PROJECT}/samples/app_manager/
 
         # Copy plugin binaries
         cp ./download/build-windows/build/win.xpl ./build/${PROJECT}/win_x64/${PROJECT}.xpl
@@ -47,7 +84,7 @@ runs:
 
         # Copy ultralight EULA and LICENSE
         cp ./download/build-windows/Ultralight-SDK-1.4.0-Win64/license/* ./build/${PROJECT}/license_ultralight
-      
+
 
         ls -lR ./build/${PROJECT}
 
@@ -87,7 +124,8 @@ runs:
         # include subdirectories
         rm -f release/skunkcrafts_updater_whitelist.txt
         find release -type f ! \( -name '*skunkcrafts_updater*' -o -path '*skunkcrafts_updater*' \) -print0 | while IFS= read -r -d '' file; do
-          checksum_hex=$(crc32 "$file")
+          # Extract only the first field (hex checksum) - crc32 may output extra validation text and non-zero exit
+          checksum_hex=$({ crc32 "$file" 2>&1 || true; } | awk '{print $1}')
           # Convert hex checksum to uint32 decimal
           checksum_decimal=$((16#$checksum_hex))
           # Remove "release/" prefix from $file
