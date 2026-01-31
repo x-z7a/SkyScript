@@ -165,3 +165,41 @@ h1 {
 .info-box p:last-child {
   margin-bottom: 0;
 }
+
+/* Flight Data Styles */
+.flight-data {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 25px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  gap: 10px;
+}
+
+.data-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+}
+
+.data-icon {
+  font-size: 24px;
+  margin-bottom: 5px;
+}
+
+.data-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.7;
+  margin-bottom: 3px;
+}
+
+.data-value {
+  font-size: 20px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  color: #4fc3f7;
+}
