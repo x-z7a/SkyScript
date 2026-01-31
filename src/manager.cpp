@@ -21,6 +21,52 @@ Manager::~Manager()
     // Destructor code here
 }
 
+float update(float inElapsedSinceLastCall, float inElapsedTimeSinceLastFlightLoop, int inCounter, void *inRefcon)
+{
+    Manager::instance().renderer_->Update();
+    return -1.0f; // call me every frame for smooth rendering
+}
+
+// Draw callback - called during X-Plane's 2D drawing phase
+int drawCallback(XPLMDrawingPhase inPhase, int inIsBefore, void *inRefcon)
+{
+    Manager::instance().forceRepaintAllApps(); // Mark all visible views as needing paint
+    Manager::instance().renderer_->Render();   // Render views to bitmaps
+    Manager::instance().updateAllApps();       // Upload bitmaps to textures
+    Manager::instance().drawAllApps();         // Draw textured quads
+    return 1;
+}
+
+PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void *params)
+{
+    switch (msg)
+    {
+    case XPLM_MSG_PLANE_LOADED:
+        if ((intptr_t)params != 0)
+        {
+            // It was not the user's plane. Ignore.
+            return;
+        }
+
+        LogMsg("Plane loaded message received.");
+        Manager::instance().initializeAllApps();
+        break;
+
+        // case XPLM_MSG_PLANE_UNLOADED:
+        //     if ((intptr_t)params != 0) {
+        //         // It was not the user's plane. Ignore.
+        //         return;
+        //     }
+
+        //     Dataref::getInstance()->executeCommand("AviTab/Home");
+        //     AppState::getInstance()->deinitialize();
+        //     break;
+
+    default:
+        break;
+    }
+}
+
 int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
 {
     LogMsg("Startup " VERSION);
@@ -47,8 +93,8 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
     XPLMMenuID root_menu = XPLMFindPluginsMenu();
     menu_ = XPLMCreateMenu("SkyScript", root_menu, XPLMAppendMenuItem(root_menu, "SkyScript", NULL, 0), this->menuCB, nullptr);
 
-    XPLMAppendMenuItem(menu_, "App Manager", (void *)"App Manager", 0);
-    XPLMAppendMenuSeparator(menu_);
+    // Discover apps and create menu items
+    discoverApps();
 
     LogMsg("XPluginStart done, xp_dir: '%s'", Manager::instance().getXpDir().c_str());
 
@@ -61,6 +107,12 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
     Platform::instance().set_logger(GetDefaultLogger("ultralight.log"));
 
     renderer_ = Renderer::Create();
+
+    // register XP draw callbacks to call renderer_->Update() and renderer_->Render()
+    XPLMRegisterFlightLoopCallback(update, 0.1, nullptr);
+    
+    // Register draw callback to draw all app windows during 2D phase
+    XPLMRegisterDrawCallback(drawCallback, xplm_Phase_Window, 0, nullptr);
 
     // RefPtr<View> view = renderer_->CreateView(800, 600, ViewConfig(), nullptr);
 
@@ -111,17 +163,100 @@ void Manager::menuCB(void *menu_ref, void *item_ref)
     const char *item_name = static_cast<const char *>(item_ref);
     if (item_name == nullptr)
     {
-        LogMsg("Menu item selected: %p, %p, name: (null)", menu_ref, item_ref);
+        LogMsg("Menu item selected: (null)");
         return;
     }
 
-    if (strcmp(item_name, "App Manager") == 0)
+    // Find the app and toggle its window
+    auto &apps = Manager::instance().apps_;
+    auto it = apps.find(item_name);
+    if (it != apps.end() && it->second)
     {
-        // TODO: load app manager window
-        LogMsg("App Manager selected.");
+        it->second->Toggle();
+        LogMsg("Toggled app: %s, visible: %d", item_name, it->second->IsVisible());
     }
     else
     {
-        LogMsg("Menu item selected: %p, %p, name: %s", menu_ref, item_ref, item_name);
+        LogMsg("App not found: %s", item_name);
+    }
+}
+
+void Manager::discoverApps()
+{
+    // find all folders under plugin_dir + "/apps"
+    std::string apps_dir = plugin_dir + "/apps";
+
+    if (!std::filesystem::exists(apps_dir))
+    {
+        LogMsg("Apps directory does not exist: %s", apps_dir.c_str());
+        return;
+    }
+
+    for (const auto &entry : std::filesystem::directory_iterator(apps_dir))
+    {
+        if (entry.is_directory())
+        {
+            std::string app_dir = entry.path().string();
+            std::string app_name = entry.path().filename().string();
+            LogMsg("Discovered app: %s, dir: %s", app_name.c_str(), app_dir.c_str());
+
+            // Create App (but don't initialize yet - renderer not ready)
+            auto app = std::make_unique<App>(app_name, app_dir);
+            apps_.emplace(app_name, std::move(app));
+            
+            // Create menu item for this app (use the stored name from map key)
+            auto& stored_app = apps_[app_name];
+            XPLMAppendMenuItem(menu_, stored_app->GetName().c_str(), 
+                              (void*)stored_app->GetName().c_str(), 0);
+        }
+    }
+}
+
+void Manager::initializeAllApps()
+{
+    // Initialize all discovered apps (renderer is now ready)
+    for (auto &[name, app] : apps_)
+    {
+        if (app)
+        {
+            LogMsg("Initializing app: %s", name.c_str());
+            app->Initialize(renderer_);
+        }
+    }
+}
+
+void Manager::updateAllApps()
+{
+    // Update textures for all visible apps
+    for (auto &[name, app] : apps_)
+    {
+        if (app && app->IsVisible())
+        {
+            app->UpdateTexture();
+        }
+    }
+}
+
+void Manager::drawAllApps()
+{
+    // Draw all visible apps
+    for (auto &[name, app] : apps_)
+    {
+        if (app && app->IsVisible())
+        {
+            app->Draw();
+        }
+    }
+}
+
+void Manager::forceRepaintAllApps()
+{
+    // Force all visible views to repaint
+    for (auto &[name, app] : apps_)
+    {
+        if (app && app->IsVisible())
+        {
+            app->ForceRepaint();
+        }
     }
 }
