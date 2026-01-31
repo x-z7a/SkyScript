@@ -49,7 +49,7 @@ CXXFLAGS_X86=$(CXXSTD) $(CFLAGS_X86)
 LNFLAGS+=-dynamiclib -shared -rdynamic -fvisibility=hidden -Wl,-exported_symbols_list -Wl,linkscript.mac -Wl,-rpath,@loader_path/lib
 
 # https://pewpewthespells.com/blog/static_and_dynamic_libraries.html
-LIBS= -F $(SDK)/Libraries/Mac -framework XPLM -framework OpenGL -framework WebKit -lcurl -lz -lUltralight -lUltralightCore -lAppCore
+LIBS= -F $(SDK)/Libraries/Mac -framework XPLM -framework OpenGL -lcurl -lz -lUltralight -lUltralightCore -lWebCore -lAppCore
 LIBS_ARM=$(LIBS) -LUltralight-SDK-1.4.0-Mac-Arm64/bin
 LIBS_X86=$(LIBS) -LUltralight-SDK-1.4.0-Mac-X86/bin
 	
@@ -83,9 +83,14 @@ $(TARGET): $(TARGET_arm) $(TARGET_x86)
 	if [ -d "/Volumes/storage/X-Plane 12/Resources/plugins" ]; then \
         mkdir -p "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/mac_x64"; \
         mkdir -p "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/mac_x64/lib"; \
+        mkdir -p "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/apps"; \
         cp -p build/mac/mac.xpl_arm /Volumes/storage/X-Plane\ 12/Resources/plugins/${PROJECT_NAME}/mac_x64/${PROJECT_NAME}.xpl; \
         cp -p Ultralight-SDK-1.4.0-Mac-Arm64/bin/* /Volumes/storage/X-Plane\ 12/Resources/plugins/${PROJECT_NAME}/mac_x64/lib; \
         cp -rp Ultralight-SDK-1.4.0-Mac-Arm64/resources /Volumes/storage/X-Plane\ 12/Resources/plugins/${PROJECT_NAME}; \
+        rm -rf "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/apps/app_manager"; \
+        rm -rf "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/apps/hello-world"; \
+        cp -rp samples/app_manager/build "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/apps/app_manager"; \
+        cp -rp samples/hello-world/build "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/apps/hello-world"; \
     fi
 
 $(DEPDIR): ; @mkdir -p $@

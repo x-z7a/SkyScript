@@ -15,6 +15,24 @@ runs:
       with:
         path: ./download
 
+    - name: setup nodejs
+      uses: actions/setup-node@v3
+      with:
+        node-version: "18"
+
+    - name: build sample apps
+      shell: bash
+      run: |
+        set -euo pipefail
+        SAMPLES_DIRS=("hello-world" "app_manager")
+        for dir in "${SAMPLES_DIRS[@]}"; do
+          echo "Building sample app in ${dir}"
+          pushd samples/${dir}
+          npm install
+          npm run build
+          popd
+        done
+
     - name: Organize Build Artifacts
       shell: bash
       run: |
@@ -27,9 +45,19 @@ runs:
         mkdir -p ./build/${PROJECT}/lin_x64/lib
         mkdir -p ./build/${PROJECT}/mac_x64/lib
         mkdir -p ./build/${PROJECT}/license_ultralight
+        mkdir -p ./build/${PROJECT}/samples/hello-world
+        mkdir -p ./build/${PROJECT}/samples/app_manager
 
         # Copy Resource
         cp ./download/build-windows/Ultralight-SDK-1.4.0-Win64/resources/* ./build/${PROJECT}/resources/
+
+        # Copy Sample Apps
+        cp -R ./samples/hello-world/dist/* ./build/${PROJECT}/samples/hello-world/
+        cp -R ./samples/app_manager/dist/* ./build/${PROJECT}/samples/app_manager/
+
+        # Copy Sample App without node_modules, use rsync to exclude node_modules
+        # rsync -av --exclude='node_modules' --exclude='build' ./samples/hello-world/ ./build/${PROJECT}/samples/hello-world/
+        # rsync -av --exclude='node_modules' --exclude='build' ./samples/app_manager/ ./build/${PROJECT}/samples/app_manager/
 
         # Copy plugin binaries
         cp ./download/build-windows/build/win.xpl ./build/${PROJECT}/win_x64/${PROJECT}.xpl
@@ -47,7 +75,7 @@ runs:
 
         # Copy ultralight EULA and LICENSE
         cp ./download/build-windows/Ultralight-SDK-1.4.0-Win64/license/* ./build/${PROJECT}/license_ultralight
-      
+
 
         ls -lR ./build/${PROJECT}
 
