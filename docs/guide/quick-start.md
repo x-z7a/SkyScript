@@ -25,6 +25,7 @@ This guide walks you through creating your first SkyScript app using React and T
    │   ├── SkyScript.xpl
    │   └── lib/
    ├── resources/
+   ├── inspector/      # Developer tools (WebKit Inspector)
    └── apps/
        └── hello-world/
    ```

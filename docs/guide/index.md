@@ -9,11 +9,13 @@ SkyScript is an X-Plane plugin that lets you build plugin UIs using modern web t
 - Build beautiful UIs with CSS - no more pixel-pushing in C++
 - Hot reload during development
 - Full TypeScript support with autocomplete for X-Plane APIs
+- Built-in WebKit Inspector for debugging
 
 **For Flight Simmers:**
 - Create custom EFBs, checklists, and cockpit displays
 - Build tools that integrate directly with the simulator
 - Share your creations as simple web apps
+- Debug and inspect apps without leaving X-Plane
 
 ## How It Works
 

@@ -23,6 +23,9 @@ features:
   - icon: 🎨
     title: Modern Web Styling
     details: Use CSS, Tailwind, or any styling framework. Ultralight renders your UI with full CSS3 support.
+  - icon: 🔍
+    title: Built-in Developer Tools
+    details: Debug your apps with the WebKit Inspector - inspect elements, console logging, breakpoints, and performance profiling.
 ---
 
 ## What is SkyScript?

@@ -39,6 +39,12 @@ export default defineConfig({
             { text: 'Using TypeScript', link: '/guide/typescript' },
             { text: 'Styling', link: '/guide/styling' }
           ]
+        },
+        {
+          text: 'Development',
+          items: [
+            { text: 'Debugging', link: '/guide/debugging' }
+          ]
         }
       ],
       '/api/': [
@@ -49,7 +55,8 @@ export default defineConfig({
             { text: 'DataRef API', link: '/api/DataRefAPI' },
             { text: 'Scenery API', link: '/api/SceneryAPI' },
             { text: 'Instance API', link: '/api/InstanceAPI' },
-            { text: 'Graphics API', link: '/api/GraphicsAPI' }
+            { text: 'Graphics API', link: '/api/GraphicsAPI' },
+            { text: 'SkyScript API', link: '/api/SkyScriptAPI' }
           ]
         }
       ]
