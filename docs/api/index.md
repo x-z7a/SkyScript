@@ -85,7 +85,7 @@ SkyScript provides full TypeScript definitions. Add them to your project:
 }
 ```
 
-Then copy the type definitions from the [SkyScript repository](https://github.com/your-username/SkyScript/tree/main/docs/api/types/xplane).
+Then copy the type definitions from the [SkyScript repository](https://github.com/x-z7a/SkyScript/tree/main/docs/api/types/xplane).
 
 ## Checking API Availability
 

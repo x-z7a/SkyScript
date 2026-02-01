@@ -6,7 +6,7 @@ This guide walks you through creating your first SkyScript app using React and T
 
 - **Node.js 18+** - [Download](https://nodejs.org/)
 - **X-Plane 11 or 12** - [Download](https://www.x-plane.com/)
-- **SkyScript Plugin** - Download from [Releases](https://github.com/your-username/SkyScript/releases)
+- **SkyScript Plugin** - Download from [Releases](https://github.com/x-z7a/SkyScript/releases)
 
 ## Installation
 
@@ -46,7 +46,7 @@ Copy the X-Plane type definitions to your project:
 mkdir -p src/types/xplane
 ```
 
-Create `src/types/xplane/index.d.ts` with the SkyScript API types (or copy from the [SkyScript repository](https://github.com/your-username/SkyScript/tree/main/docs/api/types/xplane)).
+Create `src/types/xplane/index.d.ts` with the SkyScript API types (or copy from the [SkyScript repository](https://github.com/x-z7a/SkyScript/tree/main/docs/api/types/xplane)).
 
 Update your `tsconfig.json` to include the types:
 
@@ -297,7 +297,7 @@ if (typeof XPlane !== 'undefined') {
 ## Next Steps
 
 - Explore the [API Reference](/api/) for all available functions
-- Check out the [hello-world sample](https://github.com/your-username/SkyScript/tree/main/samples/hello-world) for a complete example
+- Check out the [hello-world sample](https://github.com/x-z7a/SkyScript/tree/main/samples/hello-world) for a complete example
 - Learn about [terrain probing](/api/SceneryAPI#terrain-probing) to place objects at ground level
 - Use [coordinate conversion](/api/GraphicsAPI) to work with GPS coordinates
 

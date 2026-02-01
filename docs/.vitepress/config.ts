@@ -18,7 +18,7 @@ export default defineConfig({
       { text: 'API', link: '/api/' },
       {
         text: 'GitHub',
-        link: 'https://github.com/your-username/SkyScript'
+        link: 'https://github.com/x-z7a/SkyScript'
       }
     ],
 
@@ -56,7 +56,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/your-username/SkyScript' }
+      { icon: 'github', link: 'https://github.com/x-z7a/SkyScript' }
     ],
 
     footer: {
