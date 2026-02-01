@@ -1,0 +1,249 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #1e3c72 100%);
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  min-height: 100vh;
+}
+
+.hello-world {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.container {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 40px;
+  text-align: center;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+h1 {
+  font-size: 36px;
+  margin-bottom: 10px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.subtitle {
+  font-size: 18px;
+  opacity: 0.8;
+  margin-bottom: 30px;
+}
+
+.clock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 30px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+}
+
+.clock-icon {
+  font-size: 24px;
+}
+
+.time {
+  font-size: 28px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+}
+
+.counter-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.counter-btn {
+  padding: 15px 30px;
+  font-size: 18px;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  border: none;
+  border-radius: 30px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: bold;
+}
+
+.counter-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 5px 20px rgba(240, 147, 251, 0.5);
+}
+
+.counter-btn:active {
+  transform: scale(0.95);
+}
+
+.counter-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.count {
+  font-size: 48px;
+  font-weight: bold;
+  color: #f5576c;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.label {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.message {
+  padding: 15px;
+  background: rgba(76, 175, 80, 0.3);
+  border-radius: 10px;
+  margin-bottom: 20px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.input-section {
+  margin-bottom: 30px;
+}
+
+.text-input {
+  padding: 15px 20px;
+  font-size: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  width: 100%;
+  max-width: 300px;
+  transition: all 0.3s ease;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: #f5576c;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.text-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.info-box {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: left;
+}
+
+.info-box p {
+  margin-bottom: 8px;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.info-box p:last-child {
+  margin-bottom: 0;
+}
+
+/* Flight Data Styles */
+.flight-data {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 25px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  gap: 10px;
+}
+
+.data-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+}
+
+.data-icon {
+  font-size: 24px;
+  margin-bottom: 5px;
+}
+
+.data-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.7;
+  margin-bottom: 3px;
+}
+
+.data-value {
+  font-size: 20px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  color: #4fc3f7;
+}
+
+/* Object Placement Section */
+.object-section {
+  margin-bottom: 25px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+}
+
+.object-btn {
+  padding: 12px 24px;
+  font-size: 16px;
+  background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+  border: none;
+  border-radius: 25px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: bold;
+}
+
+.object-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 5px 20px rgba(255, 152, 0, 0.5);
+}
+
+.object-btn:active {
+  transform: scale(0.95);
+}
+
+.object-btn.active {
+  background: linear-gradient(135deg, #ef5350 0%, #d32f2f 100%);
+}
+
+.object-btn.active:hover {
+  box-shadow: 0 5px 20px rgba(239, 83, 80, 0.5);
+}
+
+.object-status {
+  margin-top: 10px;
+  font-size: 13px;
+  opacity: 0.8;
+  font-style: italic;
+}
