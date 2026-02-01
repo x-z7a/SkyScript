@@ -1,4 +1,5 @@
 #include "app.h"
+#include "js_bindings.h"
 
 #include <fstream>
 #include <cstring>
@@ -136,6 +137,8 @@ void App::Initialize(RefPtr<Renderer> renderer)
     main_view_ = renderer->CreateView(view_width_, view_height_, ViewConfig(), nullptr);
     main_view_->set_view_listener(this);
     main_view_->set_load_listener(this);
+
+    // Note: JS bindings are set up in OnDOMReady after the page loads
 
     // Load index.html using Ultralight's FileSystem (configured with plugin_dir as base)
     // Path is relative to plugin_dir, e.g., "apps/app_manager/index.html"
@@ -476,4 +479,10 @@ void App::OnFailLoading(View *caller, uint64_t frame_id, bool is_main_frame, con
 void App::OnDOMReady(View *caller, uint64_t frame_id, bool is_main_frame, const String &url)
 {
     LogMsg("[%s] DOMReady: %s (main_frame=%d)", app_name.c_str(), url.utf8().data(), is_main_frame);
+    
+    // Bind X-Plane API to JavaScript context now that the page is ready
+    if (is_main_frame && main_view_) {
+        LogMsg("[%s] Binding XPlane API to JavaScript context", app_name.c_str());
+        JSBindings::BindToView(main_view_);
+    }
 }

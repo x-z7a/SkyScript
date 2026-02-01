@@ -165,3 +165,85 @@ h1 {
 .info-box p:last-child {
   margin-bottom: 0;
 }
+
+/* Flight Data Styles */
+.flight-data {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 25px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  gap: 10px;
+}
+
+.data-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+}
+
+.data-icon {
+  font-size: 24px;
+  margin-bottom: 5px;
+}
+
+.data-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.7;
+  margin-bottom: 3px;
+}
+
+.data-value {
+  font-size: 20px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  color: #4fc3f7;
+}
+
+/* Object Placement Section */
+.object-section {
+  margin-bottom: 25px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+}
+
+.object-btn {
+  padding: 12px 24px;
+  font-size: 16px;
+  background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+  border: none;
+  border-radius: 25px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: bold;
+}
+
+.object-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 5px 20px rgba(255, 152, 0, 0.5);
+}
+
+.object-btn:active {
+  transform: scale(0.95);
+}
+
+.object-btn.active {
+  background: linear-gradient(135deg, #ef5350 0%, #d32f2f 100%);
+}
+
+.object-btn.active:hover {
+  box-shadow: 0 5px 20px rgba(239, 83, 80, 0.5);
+}
+
+.object-status {
+  margin-top: 10px;
+  font-size: 13px;
+  opacity: 0.8;
+  font-style: italic;
+}
