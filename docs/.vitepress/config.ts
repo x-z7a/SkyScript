@@ -3,10 +3,10 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: "SkyScript",
   description: "Build X-Plane plugins with React & TypeScript",
-  base: '/SkyScript/',
+  base: '/',
   
   head: [
-    ['link', { rel: 'icon', href: '/SkyScript/favicon.ico' }]
+    ['link', { rel: 'icon', href: '/favicon.ico' }]
   ],
 
   themeConfig: {
