@@ -317,4 +317,11 @@ private:
      * @return true if successful
      */
     static JSValue JS_OpenAppWindow(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Open the inspector for an app
+     * @param name The app name to open inspector for
+     * @return true if successful
+     */
+    static JSValue JS_OpenAppInspector(const JSObject& thisObject, const JSArgs& args);
 };

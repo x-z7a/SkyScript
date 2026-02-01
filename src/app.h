@@ -58,6 +58,19 @@ public:
     // Reload the view (refresh HTML/JS)
     void Reload();
     
+    // Inspector support
+    void ShowInspector();
+    void HideInspector();
+    void ToggleInspector();
+    bool IsInspectorVisible() const;
+    void UpdateInspectorTexture();
+    void DrawInspector();
+    void CheckInspectorResize();
+    void CreateInspectorWindow();
+    int OnInspectorMouseClick(int x, int y, int button, int mouseStatus);
+    int OnInspectorMouseMove(int x, int y);
+    void OnInspectorKey(char key, XPLMKeyFlags flags, char virtualKey, int losingFocus);
+    
     // Getters
     const std::string& GetName() const { return app_name; }
     
@@ -77,13 +90,25 @@ public:
     virtual void OnFailLoading(View *caller, uint64_t frame_id, bool is_main_frame, const String &url, const String &description, const String &error_domain, int error_code) override;
     virtual void OnDOMReady(View *caller, uint64_t frame_id, bool is_main_frame, const String &url) override;
 
+    // ViewListener overrides
+    virtual RefPtr<View> OnCreateInspectorView(View *caller, bool is_local, const String &inspected_url) override;
+
 private:
     std::string app_name;
     std::string app_dir;
+    RefPtr<Renderer> renderer_;
     RefPtr<View> main_view_;
     XPLMWindowID main_window_ = nullptr;
     GLuint texture_id_ = 0;
     int view_width_ = 800;
     int view_height_ = 600;
     bool texture_needs_init_ = true;
+    
+    // Inspector support
+    RefPtr<View> inspector_view_;
+    XPLMWindowID inspector_window_ = nullptr;
+    GLuint inspector_texture_id_ = 0;
+    int inspector_width_ = 800;
+    int inspector_height_ = 600;
+    bool inspector_pending_ = false;  // Track if inspector was requested
 };

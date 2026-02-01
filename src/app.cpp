@@ -26,6 +26,27 @@ App::~App()
 
 void App::Destroy()
 {
+    // Destroy inspector first
+    if (inspector_window_)
+    {
+        LogMsg("[%s] Destroying inspector window", app_name.c_str());
+        XPLMDestroyWindow(inspector_window_);
+        inspector_window_ = nullptr;
+    }
+    
+    if (inspector_view_)
+    {
+        LogMsg("[%s] Releasing inspector view", app_name.c_str());
+        inspector_view_ = nullptr;
+    }
+    
+    if (inspector_texture_id_ != 0)
+    {
+        LogMsg("[%s] Deleting inspector OpenGL texture", app_name.c_str());
+        glDeleteTextures(1, &inspector_texture_id_);
+        inspector_texture_id_ = 0;
+    }
+    
     // Destroy X-Plane window first
     if (main_window_)
     {
@@ -57,6 +78,10 @@ void App::ForceRepaint()
     if (main_view_)
     {
         main_view_->set_needs_paint(true);
+    }
+    if (inspector_view_)
+    {
+        inspector_view_->set_needs_paint(true);
     }
 }
 
@@ -155,6 +180,9 @@ void App::Draw()
 void App::Initialize(RefPtr<Renderer> renderer)
 {
     LogMsg("Initializing app: %s", app_name.c_str());
+
+    // Store renderer reference for creating inspector view later
+    renderer_ = renderer;
 
     // create a view for this app with actual dimensions
     view_width_ = 800;
@@ -300,6 +328,390 @@ void App::Reload()
         std::string relative_path = "apps/" + app_name + "/index.html";
         std::string file_url = "file:///" + relative_path;
         main_view_->LoadURL(file_url.c_str());
+    }
+}
+
+// =========================================================================
+// Inspector Support
+// =========================================================================
+
+void App::ShowInspector()
+{
+    if (!main_view_)
+    {
+        LogMsg("[%s] Cannot show inspector - main view not initialized", app_name.c_str());
+        return;
+    }
+    
+    // If inspector view already exists and window is created, just show it
+    if (inspector_view_ && inspector_window_)
+    {
+        XPLMSetWindowIsVisible(inspector_window_, 1);
+        XPLMBringWindowToFront(inspector_window_);
+        LogMsg("[%s] Inspector shown (existing)", app_name.c_str());
+        return;
+    }
+    
+    // Request inspector view creation - this will trigger OnCreateInspectorView callback
+    if (!inspector_view_)
+    {
+        LogMsg("[%s] Requesting inspector view creation", app_name.c_str());
+        inspector_pending_ = true;
+        main_view_->CreateLocalInspectorView();
+        // The OnCreateInspectorView callback will be called and set inspector_view_
+        // Then we can create the window
+    }
+    
+    // If inspector view was just created (in the callback), create the window
+    if (inspector_view_ && !inspector_window_)
+    {
+        CreateInspectorWindow();
+    }
+}
+
+void App::CreateInspectorWindow()
+{
+    if (!inspector_view_ || inspector_window_)
+        return;
+        
+    LogMsg("[%s] Creating inspector window", app_name.c_str());
+    
+    int winLeft, winTop, winRight, winBot;
+    XPLMGetScreenBoundsGlobal(&winLeft, &winTop, &winRight, &winBot);
+    
+    XPLMCreateWindow_t params;
+    memset(&params, 0, sizeof(params));
+    params.structSize = sizeof(params);
+    params.left = winLeft + 150;
+    params.right = winLeft + 150 + inspector_width_;
+    params.top = winTop - 150;
+    params.bottom = winTop - 150 - inspector_height_;
+    params.visible = 1;
+    params.refcon = this;
+    params.drawWindowFunc = [](XPLMWindowID wnd, void *refcon)
+    {
+        App *app = static_cast<App *>(refcon);
+        if (app)
+        {
+            app->DrawInspector();
+        }
+    };
+    params.handleMouseClickFunc = [](XPLMWindowID wnd, int x, int y, int isDown, void *refcon) -> int
+    {
+        App *app = static_cast<App *>(refcon);
+        if (app)
+        {
+            return app->OnInspectorMouseClick(x, y, 0, isDown);
+        }
+        return 0;
+    };
+    params.handleRightClickFunc = [](XPLMWindowID wnd, int x, int y, int isDown, void *refcon) -> int
+    {
+        App *app = static_cast<App *>(refcon);
+        if (app)
+        {
+            return app->OnInspectorMouseClick(x, y, 1, isDown);
+        }
+        return 0;
+    };
+    params.handleMouseWheelFunc = [](XPLMWindowID wnd, int x, int y, int wheel, int clicks, void *refcon) -> int
+    {
+        App *app = static_cast<App *>(refcon);
+        if (app && app->inspector_view_)
+        {
+            ultralight::ScrollEvent evt;
+            evt.type = ultralight::ScrollEvent::kType_ScrollByPixel;
+            evt.delta_x = 0;
+            evt.delta_y = clicks * 30;
+            app->inspector_view_->FireScrollEvent(evt);
+            return 1;
+        }
+        return 0;
+    };
+    params.handleKeyFunc = [](XPLMWindowID wnd, char key, XPLMKeyFlags flags, char virtualKey, void *refcon, int losingFocus)
+    {
+        App *app = static_cast<App *>(refcon);
+        if (app)
+        {
+            app->OnInspectorKey(key, flags, virtualKey, losingFocus);
+        }
+    };
+    params.handleCursorFunc = [](XPLMWindowID wnd, int x, int y, void *refcon) -> XPLMCursorStatus
+    {
+        App *app = static_cast<App *>(refcon);
+        if (app)
+        {
+            app->OnInspectorMouseMove(x, y);
+        }
+        return xplm_CursorDefault;
+    };
+    params.layer = xplm_WindowLayerFloatingWindows;
+    params.decorateAsFloatingWindow = xplm_WindowDecorationRoundRectangle;
+    
+    inspector_window_ = XPLMCreateWindowEx(&params);
+    std::string title = app_name + " - Inspector";
+    XPLMSetWindowTitle(inspector_window_, title.c_str());
+    XPLMSetWindowResizingLimits(inspector_window_, 400, 300, 2000, 2000);
+    
+    XPLMSetWindowIsVisible(inspector_window_, 1);
+    XPLMBringWindowToFront(inspector_window_);
+    LogMsg("[%s] Inspector shown", app_name.c_str());
+}
+
+void App::HideInspector()
+{
+    if (inspector_window_)
+    {
+        XPLMSetWindowIsVisible(inspector_window_, 0);
+        LogMsg("[%s] Inspector hidden", app_name.c_str());
+    }
+}
+
+void App::ToggleInspector()
+{
+    if (inspector_window_ && XPLMGetWindowIsVisible(inspector_window_))
+    {
+        HideInspector();
+    }
+    else
+    {
+        ShowInspector();
+    }
+}
+
+bool App::IsInspectorVisible() const
+{
+    return inspector_window_ && XPLMGetWindowIsVisible(inspector_window_);
+}
+
+void App::UpdateInspectorTexture()
+{
+    if (!inspector_view_)
+        return;
+    
+    Surface *surface = inspector_view_->surface();
+    if (!surface)
+        return;
+    
+    BitmapSurface *bitmap_surface = static_cast<BitmapSurface *>(surface);
+    RefPtr<Bitmap> bitmap = bitmap_surface->bitmap();
+    
+    if (!bitmap || bitmap->IsEmpty())
+        return;
+    
+    // Create texture if needed
+    if (inspector_texture_id_ == 0)
+    {
+        glGenTextures(1, &inspector_texture_id_);
+        glBindTexture(GL_TEXTURE_2D, inspector_texture_id_);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        
+        void *pixels = bitmap->LockPixels();
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bitmap->width(), bitmap->height(),
+                     0, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
+        bitmap->UnlockPixels();
+        bitmap_surface->ClearDirtyBounds();
+    }
+    
+    // Upload bitmap to texture if dirty
+    if (bitmap_surface->dirty_bounds().IsEmpty() == false)
+    {
+        glBindTexture(GL_TEXTURE_2D, inspector_texture_id_);
+        void *pixels = bitmap->LockPixels();
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bitmap->width(), bitmap->height(),
+                     0, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
+        bitmap->UnlockPixels();
+        bitmap_surface->ClearDirtyBounds();
+    }
+}
+
+void App::DrawInspector()
+{
+    if (!inspector_view_ || !inspector_window_)
+        return;
+    
+    CheckInspectorResize();
+    UpdateInspectorTexture();
+    
+    if (inspector_texture_id_ == 0)
+        return;
+    
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(inspector_window_, &left, &top, &right, &bottom);
+    
+    XPLMSetGraphicsState(0, 1, 0, 0, 1, 0, 0);
+    XPLMBindTexture2d(inspector_texture_id_, 0);
+    
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex2f(left, top);
+    glTexCoord2f(1.0f, 0.0f);
+    glVertex2f(right, top);
+    glTexCoord2f(1.0f, 1.0f);
+    glVertex2f(right, bottom);
+    glTexCoord2f(0.0f, 1.0f);
+    glVertex2f(left, bottom);
+    glEnd();
+}
+
+void App::CheckInspectorResize()
+{
+    if (!inspector_view_ || !inspector_window_)
+        return;
+    
+    static int frame_skip = 0;
+    if (++frame_skip < 10)
+        return;
+    frame_skip = 0;
+    
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(inspector_window_, &left, &top, &right, &bottom);
+    
+    int new_width = right - left;
+    int new_height = top - bottom;
+    
+    if (new_width != inspector_width_ || new_height != inspector_height_)
+    {
+        LogMsg("[%s] Inspector resized: %dx%d -> %dx%d",
+               app_name.c_str(), inspector_width_, inspector_height_, new_width, new_height);
+        
+        inspector_width_ = new_width;
+        inspector_height_ = new_height;
+        
+        inspector_view_->Resize(inspector_width_, inspector_height_);
+        
+        if (inspector_texture_id_ != 0)
+        {
+            glDeleteTextures(1, &inspector_texture_id_);
+            inspector_texture_id_ = 0;
+        }
+    }
+}
+
+int App::OnInspectorMouseClick(int x, int y, int button, int mouseStatus)
+{
+    if (!inspector_view_ || !inspector_window_)
+        return 0;
+    
+    bool isDown = (mouseStatus == xplm_MouseDown);
+    bool isUp = (mouseStatus == xplm_MouseUp);
+    bool isDrag = (mouseStatus == xplm_MouseDrag);
+    
+    if (isDown)
+    {
+        XPLMTakeKeyboardFocus(inspector_window_);
+        inspector_view_->Focus();
+    }
+    
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(inspector_window_, &left, &top, &right, &bottom);
+    
+    int view_x = x - left;
+    int view_y = y - bottom;
+    view_y = (top - bottom) - view_y;
+    
+    ultralight::MouseEvent evt;
+    evt.x = view_x;
+    evt.y = view_y;
+    evt.button = (button == 0) ? ultralight::MouseEvent::kButton_Left : ultralight::MouseEvent::kButton_Right;
+    
+    if (isDown)
+    {
+        evt.type = ultralight::MouseEvent::kType_MouseDown;
+        inspector_view_->FireMouseEvent(evt);
+    }
+    else if (isUp)
+    {
+        evt.type = ultralight::MouseEvent::kType_MouseUp;
+        inspector_view_->FireMouseEvent(evt);
+    }
+    else if (isDrag)
+    {
+        evt.type = ultralight::MouseEvent::kType_MouseMoved;
+        inspector_view_->FireMouseEvent(evt);
+    }
+    
+    return 1;
+}
+
+int App::OnInspectorMouseMove(int x, int y)
+{
+    if (!inspector_view_ || !inspector_window_)
+        return 0;
+    
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(inspector_window_, &left, &top, &right, &bottom);
+    
+    int view_x = x - left;
+    int view_y = y - bottom;
+    view_y = (top - bottom) - view_y;
+    
+    ultralight::MouseEvent evt;
+    evt.type = ultralight::MouseEvent::kType_MouseMoved;
+    evt.x = view_x;
+    evt.y = view_y;
+    evt.button = ultralight::MouseEvent::kButton_None;
+    
+    inspector_view_->FireMouseEvent(evt);
+    return 1;
+}
+
+void App::OnInspectorKey(char key, XPLMKeyFlags flags, char virtualKey, int losingFocus)
+{
+    if (!inspector_view_)
+        return;
+    
+    if (losingFocus)
+    {
+        inspector_view_->Unfocus();
+        return;
+    }
+    
+    bool isDown = (flags & xplm_DownFlag) != 0;
+    
+    ultralight::KeyEvent evt;
+    
+    if (isDown)
+    {
+        if (key >= 32 && key < 127)
+        {
+            evt.type = ultralight::KeyEvent::kType_RawKeyDown;
+            evt.virtual_key_code = virtualKey;
+            evt.native_key_code = virtualKey;
+            evt.modifiers = 0;
+            if (flags & xplm_ShiftFlag) evt.modifiers |= ultralight::KeyEvent::kMod_ShiftKey;
+            if (flags & xplm_OptionAltFlag) evt.modifiers |= ultralight::KeyEvent::kMod_AltKey;
+            if (flags & xplm_ControlFlag) evt.modifiers |= ultralight::KeyEvent::kMod_CtrlKey;
+            inspector_view_->FireKeyEvent(evt);
+            
+            evt.type = ultralight::KeyEvent::kType_Char;
+            evt.text = ultralight::String8(&key, 1);
+            evt.unmodified_text = evt.text;
+            inspector_view_->FireKeyEvent(evt);
+        }
+        else
+        {
+            evt.type = ultralight::KeyEvent::kType_RawKeyDown;
+            evt.virtual_key_code = virtualKey;
+            evt.native_key_code = virtualKey;
+            evt.modifiers = 0;
+            if (flags & xplm_ShiftFlag) evt.modifiers |= ultralight::KeyEvent::kMod_ShiftKey;
+            if (flags & xplm_OptionAltFlag) evt.modifiers |= ultralight::KeyEvent::kMod_AltKey;
+            if (flags & xplm_ControlFlag) evt.modifiers |= ultralight::KeyEvent::kMod_CtrlKey;
+            inspector_view_->FireKeyEvent(evt);
+        }
+    }
+    else
+    {
+        evt.type = ultralight::KeyEvent::kType_KeyUp;
+        evt.virtual_key_code = virtualKey;
+        evt.native_key_code = virtualKey;
+        evt.modifiers = 0;
+        inspector_view_->FireKeyEvent(evt);
     }
 }
 
@@ -522,4 +934,36 @@ void App::OnDOMReady(View *caller, uint64_t frame_id, bool is_main_frame, const 
         LogMsg("[%s] Binding XPlane API to JavaScript context", app_name.c_str());
         JSBindings::BindToView(main_view_);
     }
+}
+
+RefPtr<View> App::OnCreateInspectorView(View *caller, bool is_local, const String &inspected_url)
+{
+    LogMsg("[%s] OnCreateInspectorView called (is_local=%d, url=%s)", 
+           app_name.c_str(), is_local, inspected_url.utf8().data());
+    
+    if (!renderer_)
+    {
+        LogMsg("[%s] Cannot create inspector view - renderer not available", app_name.c_str());
+        return nullptr;
+    }
+    
+    // Create inspector view with the same dimensions
+    inspector_view_ = renderer_->CreateView(inspector_width_, inspector_height_, ViewConfig(), nullptr);
+    
+    if (!inspector_view_)
+    {
+        LogMsg("[%s] Failed to create inspector view", app_name.c_str());
+        return nullptr;
+    }
+    
+    LogMsg("[%s] Inspector view created successfully", app_name.c_str());
+    
+    // If the inspector was pending (requested via ShowInspector), create the window
+    if (inspector_pending_)
+    {
+        inspector_pending_ = false;
+        CreateInspectorWindow();
+    }
+    
+    return inspector_view_;
 }

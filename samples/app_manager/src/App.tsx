@@ -7,6 +7,7 @@ declare global {
     listApps(): string[];
     reloadApp(name: string): boolean;
     openAppWindow(name: string): boolean;
+    openAppInspector(name: string): boolean;
   }
   const SkyScript: SkyScriptAPI | undefined;
 }
@@ -59,6 +60,13 @@ function App() {
     }
   };
 
+  const handleOpenInspector = (appName: string) => {
+    if (typeof SkyScript !== 'undefined' && SkyScript.openAppInspector) {
+      SkyScript.openAppInspector(appName);
+      console.log(`Opened inspector for app: ${appName}`);
+    }
+  };
+
   const selectedAppInfo = apps.find(app => app.name === selectedApp);
 
   return (
@@ -106,6 +114,12 @@ function App() {
                   onClick={() => handleOpenWindow(selectedApp)}
                 >
                   Open Window
+                </button>
+                <button 
+                  className="btn btn-inspect"
+                  onClick={() => handleOpenInspector(selectedApp)}
+                >
+                  🔍 Inspect
                 </button>
                 <button 
                   className="btn btn-restart"

@@ -1,6 +1,6 @@
 # API Reference
 
-The SkyScript API provides JavaScript/TypeScript access to X-Plane SDK functionality. All APIs are accessed through the global `XPlane` object.
+The SkyScript API provides JavaScript/TypeScript access to X-Plane SDK functionality. All APIs are accessed through the global `XPlane` object. App management is available through the global `SkyScript` object.
 
 ## API Overview
 
@@ -10,6 +10,7 @@ The SkyScript API provides JavaScript/TypeScript access to X-Plane SDK functiona
 | [`XPlane.scenery`](./SceneryAPI) | Load objects, probe terrain, magnetic variation |
 | [`XPlane.instance`](./InstanceAPI) | Create and manage object instances |
 | [`XPlane.graphics`](./GraphicsAPI) | Coordinate system conversions |
+| `SkyScript` | App management and debugging |
 
 ## Quick Examples
 
@@ -70,6 +71,23 @@ const local = XPlane.graphics.worldToLocal(47.45, -122.31, 100);
 
 // Convert local back to GPS
 const world = XPlane.graphics.localToWorld(local.x, local.y, local.z);
+```
+
+### App Management (SkyScript API)
+
+```typescript
+// List all installed apps
+const apps = SkyScript.listApps();
+console.log(`Installed apps: ${apps.join(', ')}`);
+
+// Open an app window
+SkyScript.openAppWindow('hello-world');
+
+// Open the developer inspector for debugging an app
+SkyScript.openAppInspector('hello-world');
+
+// Reload an app to refresh its HTML/JS
+SkyScript.reloadApp('hello-world');
 ```
 
 ## TypeScript Support

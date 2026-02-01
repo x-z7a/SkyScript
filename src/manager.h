@@ -65,6 +65,7 @@ public:
     std::vector<std::string> getAppNames() const;
     bool reloadApp(const std::string& name);
     bool openAppWindow(const std::string& name);
+    bool openAppInspector(const std::string& name);
 
 private:
     // ...existing code...

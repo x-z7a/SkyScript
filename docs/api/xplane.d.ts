@@ -13,6 +13,11 @@ declare global {
      * The XPlane global object provides access to X-Plane SDK functionality
      */
     const XPlane: XPlaneAPI;
+
+    /**
+     * The SkyScript global object provides app management functionality
+     */
+    const SkyScript: SkyScriptAPI;
 }
 
 /**
@@ -352,6 +357,87 @@ interface DataRefAPI {
      * ```
      */
     setData(name: string, value: string, offset?: number): boolean;
+}
+
+/**
+ * SkyScript API for app management
+ * 
+ * Provides functions to list, reload, and manage SkyScript applications.
+ * Available through the global `SkyScript` object.
+ * 
+ * @example
+ * ```typescript
+ * // List all installed apps
+ * const apps = SkyScript.listApps();
+ * console.log(apps); // ['app_manager', 'hello-world']
+ * 
+ * // Open an app window
+ * SkyScript.openAppWindow('hello-world');
+ * 
+ * // Open the inspector for debugging
+ * SkyScript.openAppInspector('hello-world');
+ * 
+ * // Reload an app to refresh its content
+ * SkyScript.reloadApp('hello-world');
+ * ```
+ */
+interface SkyScriptAPI {
+    /**
+     * List all installed SkyScript applications
+     * 
+     * @returns Array of app names available in the system
+     * 
+     * @example
+     * ```typescript
+     * const apps = SkyScript.listApps();
+     * apps.forEach(app => console.log(`Found app: ${app}`));
+     * ```
+     */
+    listApps(): string[];
+
+    /**
+     * Reload an app's view (refresh HTML/JS content)
+     * 
+     * @param name - The app name to reload
+     * @returns `true` if successful, `false` if app not found or not initialized
+     * 
+     * @example
+     * ```typescript
+     * // Reload to pick up code changes
+     * SkyScript.reloadApp('my-app');
+     * ```
+     */
+    reloadApp(name: string): boolean;
+
+    /**
+     * Open/show an app's window
+     * 
+     * @param name - The app name to open
+     * @returns `true` if successful, `false` if app not found
+     * 
+     * @example
+     * ```typescript
+     * SkyScript.openAppWindow('hello-world');
+     * ```
+     */
+    openAppWindow(name: string): boolean;
+
+    /**
+     * Open the inspector/dev tools for an app
+     * 
+     * Opens a separate window with Safari/WebKit-style developer tools
+     * for debugging the app's HTML, CSS, JavaScript, and network activity.
+     * 
+     * @param name - The app name to open inspector for
+     * @returns `true` if successful, `false` if app not found
+     * 
+     * @example
+     * ```typescript
+     * // Open inspector to debug an app
+     * SkyScript.openAppInspector('my-app');
+     * ```
+     */
+    openAppInspector(name: string): boolean;
 }
 
 export {};

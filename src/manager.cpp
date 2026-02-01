@@ -292,6 +292,11 @@ void Manager::updateAllApps()
         {
             app->UpdateTexture();
         }
+        // Also update inspector texture if visible
+        if (app && app->IsInspectorVisible())
+        {
+            app->UpdateInspectorTexture();
+        }
     }
 }
 
@@ -304,6 +309,11 @@ void Manager::drawAllApps()
         {
             app->Draw();
         }
+        // Also draw inspector if visible
+        if (app && app->IsInspectorVisible())
+        {
+            app->DrawInspector();
+        }
     }
 }
 
@@ -312,7 +322,7 @@ void Manager::forceRepaintAllApps()
     // Force all visible views to repaint
     for (auto &[name, app] : apps_)
     {
-        if (app && app->IsVisible())
+        if (app && (app->IsVisible() || app->IsInspectorVisible()))
         {
             app->ForceRepaint();
         }
@@ -380,5 +390,28 @@ bool Manager::openAppWindow(const std::string& name)
         }
     }
     LogMsg("Failed to open app window (not found or not initialized): %s", name.c_str());
+    return false;
+}
+
+bool Manager::openAppInspector(const std::string& name)
+{
+    auto it = apps_.find(name);
+    if (it != apps_.end() && it->second)
+    {
+        // Initialize if not already done
+        if (!it->second->IsInitialized() && renderer_)
+        {
+            LogMsg("Initializing app on demand: %s", name.c_str());
+            it->second->Initialize(renderer_);
+        }
+        
+        if (it->second->IsInitialized())
+        {
+            LogMsg("Opening inspector for app: %s", name.c_str());
+            it->second->ShowInspector();
+            return true;
+        }
+    }
+    LogMsg("Failed to open app inspector (not found or not initialized): %s", name.c_str());
     return false;
 }

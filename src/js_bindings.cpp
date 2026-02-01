@@ -115,6 +115,7 @@ void JSBindings::BindToView(RefPtr<View> view) {
     skyscript["listApps"] = JSCallbackWithRetval(JS_ListApps);
     skyscript["reloadApp"] = JSCallbackWithRetval(JS_ReloadApp);
     skyscript["openAppWindow"] = JSCallbackWithRetval(JS_OpenAppWindow);
+    skyscript["openAppInspector"] = JSCallbackWithRetval(JS_OpenAppInspector);
     
     // Attach SkyScript to global
     global["SkyScript"] = JSValue(static_cast<JSObjectRef>(skyscript));
@@ -976,4 +977,16 @@ JSValue JSBindings::JS_OpenAppWindow(const JSObject& thisObject, const JSArgs& a
     std::string name_str = name.utf8().data();
     
     return JSValue(Manager::instance().openAppWindow(name_str));
+}
+
+JSValue JSBindings::JS_OpenAppInspector(const JSObject& thisObject, const JSArgs& args) {
+    if (args.empty() || !args[0].IsString()) {
+        LogMsg("JSBindings: openAppInspector requires a string argument (app name)");
+        return JSValue(false);
+    }
+    
+    String name = args[0].ToString();
+    std::string name_str = name.utf8().data();
+    
+    return JSValue(Manager::instance().openAppInspector(name_str));
 }
