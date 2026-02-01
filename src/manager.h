@@ -37,9 +37,11 @@ public:
     static void menuCB([[maybe_unused]] void *menu_ref, void *item_ref);
     void discoverApps();
     void initializeAllApps();
+    void destroyAllApps();
     void updateAllApps();
     void drawAllApps();
     void forceRepaintAllApps();
+    void stop();
 
     // Plugin info getters
     const char *getName() const { return name; }

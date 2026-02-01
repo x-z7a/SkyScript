@@ -19,3 +19,8 @@ PLUGIN_API void XPluginDisable(void)
 {
     Manager::instance().disable();
 }
+
+PLUGIN_API void XPluginStop(void)
+{
+    Manager::instance().stop();
+}

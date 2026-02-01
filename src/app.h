@@ -44,6 +44,7 @@ public:
     App &operator=(const App &) = delete;
 
     void Initialize(RefPtr<Renderer> renderer);
+    void Destroy();        // Cleanup view and window resources
     void UpdateTexture();  // Update texture from Ultralight bitmap
     void Draw();
     
@@ -52,6 +53,7 @@ public:
     void Hide();
     void Toggle();
     bool IsVisible() const;
+    bool IsInitialized() const { return main_view_.get() != nullptr; }
     
     // Getters
     const std::string& GetName() const { return app_name; }

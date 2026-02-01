@@ -52,15 +52,16 @@ PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void *params)
         Manager::instance().initializeAllApps();
         break;
 
-        // case XPLM_MSG_PLANE_UNLOADED:
-        //     if ((intptr_t)params != 0) {
-        //         // It was not the user's plane. Ignore.
-        //         return;
-        //     }
+    case XPLM_MSG_PLANE_UNLOADED:
+        if ((intptr_t)params != 0)
+        {
+            // It was not the user's plane. Ignore.
+            return;
+        }
 
-        //     Dataref::getInstance()->executeCommand("AviTab/Home");
-        //     AppState::getInstance()->deinitialize();
-        //     break;
+        LogMsg("Plane unloaded message received.");
+        Manager::instance().destroyAllApps();
+        break;
 
     default:
         break;
@@ -152,10 +153,40 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
 void Manager::enable()
 {
     LogMsg("Plugin enabled");
+    
+    // Re-initialize apps if renderer exists (plugin was re-enabled after disable)
+    if (renderer_)
+    {
+        LogMsg("Re-initializing apps after plugin re-enable");
+        initializeAllApps();
+    }
 }
+
 void Manager::disable()
 {
-    LogMsg("Plugin disabled");
+    LogMsg("Plugin disabled - destroying all apps");
+    destroyAllApps();
+}
+
+void Manager::stop()
+{
+    LogMsg("Plugin stopping - cleaning up resources");
+    
+    // Destroy all apps first
+    destroyAllApps();
+    
+    // Unregister callbacks
+    XPLMUnregisterFlightLoopCallback(update, nullptr);
+    XPLMUnregisterDrawCallback(drawCallback, xplm_Phase_Window, 0, nullptr);
+    
+    // Release the renderer
+    if (renderer_)
+    {
+        LogMsg("Releasing Ultralight renderer");
+        renderer_ = nullptr;
+    }
+    
+    LogMsg("Plugin stopped");
 }
 
 void Manager::menuCB(void *menu_ref, void *item_ref)
@@ -259,4 +290,18 @@ void Manager::forceRepaintAllApps()
             app->ForceRepaint();
         }
     }
+}
+
+void Manager::destroyAllApps()
+{
+    LogMsg("Destroying all apps");
+    for (auto &[name, app] : apps_)
+    {
+        if (app && app->IsInitialized())
+        {
+            LogMsg("Destroying app: %s", name.c_str());
+            app->Destroy();
+        }
+    }
+    LogMsg("All apps destroyed");
 }

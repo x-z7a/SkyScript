@@ -21,9 +21,34 @@ App::App(const std::string &name, const std::string &dir)
 
 App::~App()
 {
+    Destroy();
+}
+
+void App::Destroy()
+{
+    // Destroy X-Plane window first
+    if (main_window_)
+    {
+        LogMsg("[%s] Destroying X-Plane window", app_name.c_str());
+        XPLMDestroyWindow(main_window_);
+        main_window_ = nullptr;
+    }
+    
+    // Release the Ultralight view
+    if (main_view_)
+    {
+        LogMsg("[%s] Releasing Ultralight view", app_name.c_str());
+        main_view_->set_view_listener(nullptr);
+        main_view_->set_load_listener(nullptr);
+        main_view_ = nullptr;  // RefPtr will release the view
+    }
+    
+    // Delete OpenGL texture
     if (texture_id_ != 0)
     {
+        LogMsg("[%s] Deleting OpenGL texture", app_name.c_str());
         glDeleteTextures(1, &texture_id_);
+        texture_id_ = 0;
     }
 }
 
