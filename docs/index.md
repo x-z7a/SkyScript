@@ -23,9 +23,6 @@ features:
   - icon: 🎨
     title: Modern Web Styling
     details: Use CSS, Tailwind, or any styling framework. Ultralight renders your UI with full CSS3 support.
-  - icon: 🔧
-    title: Hot Reload Development
-    details: Develop your app in a browser with hot reload, then deploy to X-Plane when ready.
 ---
 
 ## What is SkyScript?

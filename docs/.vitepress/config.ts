@@ -4,21 +4,21 @@ export default defineConfig({
   title: "SkyScript",
   description: "Build X-Plane plugins with React & TypeScript",
   base: '/',
-  
+
   head: [
     ['link', { rel: 'icon', href: '/favicon.ico' }]
   ],
 
   themeConfig: {
     logo: '/logo.svg',
-    
+
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/quick-start' },
       { text: 'API', link: '/api/' },
-      { 
-        text: 'GitHub', 
-        link: 'https://github.com/your-username/SkyScript' 
+      {
+        text: 'GitHub',
+        link: 'https://github.com/your-username/SkyScript'
       }
     ],
 
@@ -60,7 +60,6 @@ export default defineConfig({
     ],
 
     footer: {
-      message: 'Released under the MIT License.',
       copyright: 'Copyright © 2024-present'
     },
 
