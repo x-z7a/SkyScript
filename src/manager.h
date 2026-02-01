@@ -5,6 +5,7 @@
 #include <memory>
 #include <filesystem>
 #include <future>
+#include <vector>
 
 #include "XPLMDataAccess.h"
 #include "XPLMScenery.h"
@@ -59,6 +60,11 @@ public:
     void setPluginDir(const std::string &v) { plugin_dir = v; }
     void setOutputDir(const std::string &v) { output_dir = v; }
     void setPrefPath(const std::string &v) { pref_path = v; }
+
+    // App management API (for SkyScript JS bindings)
+    std::vector<std::string> getAppNames() const;
+    bool reloadApp(const std::string& name);
+    bool openAppWindow(const std::string& name);
 
 private:
     // ...existing code...

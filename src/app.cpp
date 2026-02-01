@@ -291,6 +291,18 @@ bool App::IsVisible() const
     return main_window_ && XPLMGetWindowIsVisible(main_window_);
 }
 
+void App::Reload()
+{
+    if (main_view_)
+    {
+        LogMsg("[%s] Reloading view", app_name.c_str());
+        // Reload the current URL (index.html) to refresh HTML/JS
+        std::string relative_path = "apps/" + app_name + "/index.html";
+        std::string file_url = "file:///" + relative_path;
+        main_view_->LoadURL(file_url.c_str());
+    }
+}
+
 void App::CheckResize()
 {
     if (!main_view_ || !main_window_)

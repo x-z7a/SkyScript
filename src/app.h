@@ -55,6 +55,9 @@ public:
     bool IsVisible() const;
     bool IsInitialized() const { return main_view_.get() != nullptr; }
     
+    // Reload the view (refresh HTML/JS)
+    void Reload();
+    
     // Getters
     const std::string& GetName() const { return app_name; }
     

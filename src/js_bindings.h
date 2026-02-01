@@ -293,4 +293,28 @@ private:
      * @return Object with x, y, z
      */
     static JSValue JS_WorldToLocal(const JSObject& thisObject, const JSArgs& args);
+
+    // =========================================================================
+    // SkyScript App Management API
+    // =========================================================================
+
+    /**
+     * @brief List all installed apps
+     * @return Array of app names
+     */
+    static JSValue JS_ListApps(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Reload an app (refresh its view)
+     * @param name The app name to reload
+     * @return true if successful
+     */
+    static JSValue JS_ReloadApp(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Open/show an app's window
+     * @param name The app name to open
+     * @return true if successful
+     */
+    static JSValue JS_OpenAppWindow(const JSObject& thisObject, const JSArgs& args);
 };

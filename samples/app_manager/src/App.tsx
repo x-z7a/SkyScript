@@ -1,28 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
+
+// Declare global SkyScript API
+declare global {
+  interface SkyScriptAPI {
+    listApps(): string[];
+    reloadApp(name: string): boolean;
+    openAppWindow(name: string): boolean;
+  }
+  const SkyScript: SkyScriptAPI | undefined;
+}
 
 interface AppInfo {
   name: string;
   description: string;
   version: string;
-  status: 'running' | 'stopped' | 'error';
 }
 
 function App() {
-  const [apps] = useState<AppInfo[]>([
-    { name: 'app_manager', description: 'SkyScript App Manager', version: '1.0.0', status: 'running' },
-    { name: 'hello-world', description: 'Hello World Demo App', version: '1.0.0', status: 'running' },
-  ]);
-
+  const [apps, setApps] = useState<AppInfo[]>([]);
   const [selectedApp, setSelectedApp] = useState<string | null>(null);
 
-  const getStatusColor = (status: AppInfo['status']) => {
-    switch (status) {
-      case 'running': return '#4CAF50';
-      case 'stopped': return '#9E9E9E';
-      case 'error': return '#F44336';
+  // Load apps from SkyScript API on mount
+  useEffect(() => {
+    refreshAppList();
+  }, []);
+
+  const refreshAppList = () => {
+    if (typeof SkyScript !== 'undefined' && SkyScript.listApps) {
+      const appNames = SkyScript.listApps();
+      // Filter out app_manager - it shouldn't manage itself
+      const filteredApps = appNames.filter(name => name !== 'app_manager');
+      const appList: AppInfo[] = filteredApps.map(name => ({
+        name,
+        description: `${name} App`,
+        version: '1.0.0',
+      }));
+      setApps(appList);
+    } else {
+      // Fallback for development/preview (exclude app_manager)
+      setApps([
+        { name: 'hello-world', description: 'Hello World Demo App', version: '1.0.0' },
+      ]);
     }
   };
+
+  const handleRestart = (appName: string) => {
+    if (typeof SkyScript !== 'undefined' && SkyScript.reloadApp) {
+      SkyScript.reloadApp(appName);
+      console.log(`Restarted app: ${appName}`);
+    }
+  };
+
+  const handleOpenWindow = (appName: string) => {
+    if (typeof SkyScript !== 'undefined' && SkyScript.openAppWindow) {
+      SkyScript.openAppWindow(appName);
+      console.log(`Opened window for app: ${appName}`);
+    }
+  };
+
+  const selectedAppInfo = apps.find(app => app.name === selectedApp);
 
   return (
     <div className="app-manager">
@@ -34,34 +71,48 @@ function App() {
       <div className="apps-container">
         <div className="apps-list">
           <h2>Installed Apps</h2>
-          {apps.map((app) => (
-            <div
-              key={app.name}
-              className={`app-card ${selectedApp === app.name ? 'selected' : ''}`}
-              onClick={() => setSelectedApp(app.name)}
-            >
-              <div className="app-status" style={{ backgroundColor: getStatusColor(app.status) }} />
-              <div className="app-info">
-                <h3>{app.name}</h3>
-                <p>{app.description}</p>
-                <span className="version">v{app.version}</span>
-              </div>
+          {apps.length === 0 ? (
+            <div className="no-apps">
+              <p>No apps installed</p>
             </div>
-          ))}
+          ) : (
+            apps.map((app) => (
+              <div
+                key={app.name}
+                className={`app-card ${selectedApp === app.name ? 'selected' : ''}`}
+                onClick={() => setSelectedApp(app.name)}
+              >
+                <div className="app-info">
+                  <h3>{app.name}</h3>
+                  <p>{app.description}</p>
+                  <span className="version">v{app.version}</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         <div className="app-details">
-          {selectedApp ? (
+          {selectedApp && selectedAppInfo ? (
             <>
               <h2>{selectedApp}</h2>
               <div className="detail-row">
-                <label>Status:</label>
-                <span className="status-badge running">Running</span>
+                <label>Version:</label>
+                <span>v{selectedAppInfo.version}</span>
               </div>
               <div className="actions">
-                <button className="btn btn-stop">Stop</button>
-                <button className="btn btn-restart">Restart</button>
-                <button className="btn btn-open">Open Window</button>
+                <button 
+                  className="btn btn-open"
+                  onClick={() => handleOpenWindow(selectedApp)}
+                >
+                  Open Window
+                </button>
+                <button 
+                  className="btn btn-restart"
+                  onClick={() => handleRestart(selectedApp)}
+                >
+                  Restart
+                </button>
               </div>
             </>
           ) : (
