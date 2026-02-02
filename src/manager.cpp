@@ -111,41 +111,9 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
 
     // register XP draw callbacks to call renderer_->Update() and renderer_->Render()
     XPLMRegisterFlightLoopCallback(update, 0.1, nullptr);
-    
+
     // Register draw callback to draw all app windows during 2D phase
     XPLMRegisterDrawCallback(drawCallback, xplm_Phase_Window, 0, nullptr);
-
-    // RefPtr<View> view = renderer_->CreateView(800, 600, ViewConfig(), nullptr);
-
-    // // multiple line of js code to test
-    // String scripts = R"(
-    //     function add(a, b) {
-    //         return a + b;
-    //     }
-    //     add(5, 7);
-    // )";
-
-    // String result = view->EvaluateScript(scripts);
-    // LogMsg("FFFFFFF!!!!!!!!!!%s", result.utf8().data());
-
-    // scripts = R"(
-    //     function add(a, b) {
-    //         return a + b;
-    //     }
-    //     add(5, "7");
-    // )";
-    // result = view->EvaluateScript(scripts);
-    // LogMsg("FFFFFFF!!!!!!!!!!%s", result.utf8().data());
-
-    // RefPtr<JSContext> context = view->LockJSContext();
-    // SetJSContext(context->ctx());
-    // JSObject global = JSGlobalObject();
-    // global["test"] = BindJSCallbackWithRetval(&Manager::test);
-    // scripts = R"(
-    //     test();
-    // )";
-    // result = view->EvaluateScript(scripts);
-    // LogMsg("TEST!!!!!!!!!!%s", result.utf8().data());
 
     return 1;
 }
@@ -153,7 +121,7 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
 void Manager::enable()
 {
     LogMsg("Plugin enabled");
-    
+
     // Re-initialize apps if renderer exists (plugin was re-enabled after disable)
     if (renderer_)
     {
@@ -171,21 +139,21 @@ void Manager::disable()
 void Manager::stop()
 {
     LogMsg("Plugin stopping - cleaning up resources");
-    
+
     // Destroy all apps first
     destroyAllApps();
-    
+
     // Unregister callbacks
     XPLMUnregisterFlightLoopCallback(update, nullptr);
     XPLMUnregisterDrawCallback(drawCallback, xplm_Phase_Window, 0, nullptr);
-    
+
     // Release the renderer
     if (renderer_)
     {
         LogMsg("Releasing Ultralight renderer");
         renderer_ = nullptr;
     }
-    
+
     LogMsg("Plugin stopped");
 }
 
@@ -230,43 +198,43 @@ void Manager::discoverApps()
         {
             std::string app_dir = entry.path().string();
             std::string app_name = entry.path().filename().string();
-            
+
             // Skip app_manager for now - we'll add it last
             if (app_name == "app_manager")
             {
                 continue;
             }
-            
+
             LogMsg("Discovered app: %s, dir: %s", app_name.c_str(), app_dir.c_str());
 
             // Create App (but don't initialize yet - renderer not ready)
             auto app = std::make_unique<App>(app_name, app_dir);
             apps_.emplace(app_name, std::move(app));
-            
+
             // Create menu item for this app (use the stored name from map key)
-            auto& stored_app = apps_[app_name];
-            XPLMAppendMenuItem(menu_, stored_app->GetName().c_str(), 
-                              (void*)stored_app->GetName().c_str(), 0);
+            auto &stored_app = apps_[app_name];
+            XPLMAppendMenuItem(menu_, stored_app->GetName().c_str(),
+                               (void *)stored_app->GetName().c_str(), 0);
         }
     }
-    
+
     // Now add app_manager as a system app at the end with a separator
     std::string app_manager_dir = apps_dir + "/app_manager";
     if (std::filesystem::exists(app_manager_dir) && std::filesystem::is_directory(app_manager_dir))
     {
         LogMsg("Discovered system app: app_manager, dir: %s", app_manager_dir.c_str());
-        
+
         // Create App
         auto app = std::make_unique<App>("app_manager", app_manager_dir);
         apps_.emplace("app_manager", std::move(app));
-        
+
         // Add separator before app_manager
         XPLMAppendMenuSeparator(menu_);
-        
+
         // Create menu item for app_manager
-        auto& stored_app = apps_["app_manager"];
-        XPLMAppendMenuItem(menu_, stored_app->GetName().c_str(), 
-                          (void*)stored_app->GetName().c_str(), 0);
+        auto &stored_app = apps_["app_manager"];
+        XPLMAppendMenuItem(menu_, stored_app->GetName().c_str(),
+                           (void *)stored_app->GetName().c_str(), 0);
     }
 }
 
@@ -357,7 +325,7 @@ std::vector<std::string> Manager::getAppNames() const
     return names;
 }
 
-bool Manager::reloadApp(const std::string& name)
+bool Manager::reloadApp(const std::string &name)
 {
     auto it = apps_.find(name);
     if (it != apps_.end() && it->second && it->second->IsInitialized())
@@ -370,7 +338,7 @@ bool Manager::reloadApp(const std::string& name)
     return false;
 }
 
-bool Manager::openAppWindow(const std::string& name)
+bool Manager::openAppWindow(const std::string &name)
 {
     auto it = apps_.find(name);
     if (it != apps_.end() && it->second)
@@ -381,7 +349,7 @@ bool Manager::openAppWindow(const std::string& name)
             LogMsg("Initializing app on demand: %s", name.c_str());
             it->second->Initialize(renderer_);
         }
-        
+
         if (it->second->IsInitialized())
         {
             LogMsg("Opening app window: %s", name.c_str());
@@ -393,7 +361,7 @@ bool Manager::openAppWindow(const std::string& name)
     return false;
 }
 
-bool Manager::openAppInspector(const std::string& name)
+bool Manager::openAppInspector(const std::string &name)
 {
     auto it = apps_.find(name);
     if (it != apps_.end() && it->second)
@@ -404,7 +372,7 @@ bool Manager::openAppInspector(const std::string& name)
             LogMsg("Initializing app on demand: %s", name.c_str());
             it->second->Initialize(renderer_);
         }
-        
+
         if (it->second->IsInitialized())
         {
             LogMsg("Opening inspector for app: %s", name.c_str());

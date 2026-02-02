@@ -279,6 +279,16 @@ void App::Initialize(RefPtr<Renderer> renderer)
     main_window_ = XPLMCreateWindowEx(&params);
     XPLMSetWindowTitle(main_window_, app_name.c_str());
     XPLMSetWindowResizingLimits(main_window_, 200, 200, 2000, 2000);  // Allow resizing
+    
+    // Check if VR is enabled and set appropriate window mode
+    XPLMDataRef vr_enabled_ref = XPLMFindDataRef("sim/graphics/VR/enabled");
+    int vr_enabled = vr_enabled_ref ? XPLMGetDatai(vr_enabled_ref) : 0;
+    if (vr_enabled) {
+        XPLMSetWindowPositioningMode(main_window_, xplm_WindowVR, -1);
+    } else {
+        XPLMSetWindowPositioningMode(main_window_, xplm_WindowPositionFree, -1);
+    }
+    
     XPLMSetWindowIsVisible(main_window_, 0);  // Hidden by default - use menu to show
 }
 
@@ -452,6 +462,15 @@ void App::CreateInspectorWindow()
     std::string title = app_name + " - Inspector";
     XPLMSetWindowTitle(inspector_window_, title.c_str());
     XPLMSetWindowResizingLimits(inspector_window_, 400, 300, 2000, 2000);
+    
+    // Check if VR is enabled and set appropriate window mode
+    XPLMDataRef vr_enabled_ref = XPLMFindDataRef("sim/graphics/VR/enabled");
+    int vr_enabled = vr_enabled_ref ? XPLMGetDatai(vr_enabled_ref) : 0;
+    if (vr_enabled) {
+        XPLMSetWindowPositioningMode(inspector_window_, xplm_WindowVR, -1);
+    } else {
+        XPLMSetWindowPositioningMode(inspector_window_, xplm_WindowPositionFree, -1);
+    }
     
     XPLMSetWindowIsVisible(inspector_window_, 1);
     XPLMBringWindowToFront(inspector_window_);
