@@ -37,6 +37,7 @@ public:
     void disable();
     static void menuCB([[maybe_unused]] void *menu_ref, void *item_ref);
     void discoverApps();
+    void addDefaultApps();  // Add default URL-based apps
     void initializeAllApps();
     void destroyAllApps();
     void updateAllApps();

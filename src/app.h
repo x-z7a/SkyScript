@@ -33,11 +33,18 @@
 
 using namespace ultralight;
 
+// App types: local file-based apps vs URL-based apps
+enum class AppType {
+    Local,  // Loads from local file system (apps/<name>/index.html)
+    URL     // Loads from a remote URL
+};
+
 class App : public ultralight::ViewListener, public ultralight::LoadListener
 {
 public:
     App();
-    App(const std::string &name, const std::string &dir);
+    App(const std::string &name, const std::string &dir);  // Local app
+    App(const std::string &name, const std::string &url, AppType type);  // URL app
     ~App();
 
     // Delete copy constructor and copy assignment operator
@@ -74,6 +81,8 @@ public:
     
     // Getters
     const std::string& GetName() const { return app_name; }
+    AppType GetType() const { return app_type; }
+    bool IsLocalApp() const { return app_type == AppType::Local; }
     
     // Force the view to repaint
     void ForceRepaint();
@@ -96,7 +105,9 @@ public:
 
 private:
     std::string app_name;
-    std::string app_dir;
+    std::string app_dir;  // For local apps: directory path
+    std::string app_url;  // For URL apps: the URL to load
+    AppType app_type = AppType::Local;
     RefPtr<Renderer> renderer_;
     RefPtr<Session> session_;  // Per-app session for isolated storage (cookies, localStorage, etc.)
     RefPtr<View> main_view_;

@@ -16,9 +16,15 @@
 App::App() : app_name(""), app_dir("") {}
 
 App::App(const std::string &name, const std::string &dir)
-    : app_name(name), app_dir(dir)
+    : app_name(name), app_dir(dir), app_type(AppType::Local)
 {
-    LogMsg("App created: %s, dir: %s", app_name.c_str(), app_dir.c_str());
+    LogMsg("App created (local): %s, dir: %s", app_name.c_str(), app_dir.c_str());
+}
+
+App::App(const std::string &name, const std::string &url, AppType type)
+    : app_name(name), app_url(url), app_type(type)
+{
+    LogMsg("App created (URL): %s, url: %s", app_name.c_str(), app_url.c_str());
 }
 
 App::~App()
@@ -188,7 +194,8 @@ void App::Draw()
 
 void App::Initialize(RefPtr<Renderer> renderer)
 {
-    LogMsg("Initializing app: %s", app_name.c_str());
+    LogMsg("Initializing app: %s (type=%s)", app_name.c_str(), 
+           app_type == AppType::Local ? "local" : "url");
 
     // Store renderer reference for creating inspector view later
     renderer_ = renderer;
@@ -214,12 +221,19 @@ void App::Initialize(RefPtr<Renderer> renderer)
 
     // Note: JS bindings are set up in OnDOMReady after the page loads
 
-    // Load index.html using Ultralight's FileSystem (configured with plugin_dir as base)
-    // Path is relative to plugin_dir, e.g., "apps/app_manager/index.html"
-    std::string relative_path = "apps/" + app_name + "/index.html";
-    std::string file_url = "file:///" + relative_path;
-    LogMsg("Loading URL: %s", file_url.c_str());
-    main_view_->LoadURL(file_url.c_str());
+    // Load content based on app type
+    std::string load_url;
+    if (app_type == AppType::Local) {
+        // Load index.html using Ultralight's FileSystem (configured with plugin_dir as base)
+        // Path is relative to plugin_dir, e.g., "apps/app_manager/index.html"
+        std::string relative_path = "apps/" + app_name + "/index.html";
+        load_url = "file:///" + relative_path;
+    } else {
+        // URL app - load directly from the URL
+        load_url = app_url;
+    }
+    LogMsg("Loading URL: %s", load_url.c_str());
+    main_view_->LoadURL(load_url.c_str());
 
     int winLeft, winTop, winRight, winBot;
     XPLMGetScreenBoundsGlobal(&winLeft, &winTop, &winRight, &winBot);
@@ -355,10 +369,17 @@ void App::Reload()
     if (main_view_)
     {
         LogMsg("[%s] Reloading view", app_name.c_str());
-        // Reload the current URL (index.html) to refresh HTML/JS
-        std::string relative_path = "apps/" + app_name + "/index.html";
-        std::string file_url = "file:///" + relative_path;
-        main_view_->LoadURL(file_url.c_str());
+        
+        std::string load_url;
+        if (app_type == AppType::Local) {
+            // Reload from local file
+            std::string relative_path = "apps/" + app_name + "/index.html";
+            load_url = "file:///" + relative_path;
+        } else {
+            // Reload from URL
+            load_url = app_url;
+        }
+        main_view_->LoadURL(load_url.c_str());
     }
 }
 

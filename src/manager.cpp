@@ -103,7 +103,7 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
     // intialize Ultralight here
     Config config;
     config.user_stylesheet = "body { background-color: #202020; color: #E0E0E0; }";
-    config.cache_path = (output_dir + "/cache").c_str();  // For persistent sessions
+    config.cache_path = (output_dir + "/cache").c_str(); // For persistent sessions
     Platform::instance().set_config(config);
     Platform::instance().set_font_loader(GetPlatformFontLoader());
     Platform::instance().set_file_system(GetPlatformFileSystem(plugin_dir.c_str()));
@@ -193,7 +193,7 @@ void Manager::discoverApps()
         return;
     }
 
-    // First pass: discover all apps except app_manager
+    // First pass: discover all user apps except app_manager
     for (const auto &entry : std::filesystem::directory_iterator(apps_dir))
     {
         if (entry.is_directory())
@@ -220,6 +220,9 @@ void Manager::discoverApps()
         }
     }
 
+    // Add default URL-based apps (between user apps and system app)
+    addDefaultApps();
+
     // Now add app_manager as a system app at the end with a separator
     std::string app_manager_dir = apps_dir + "/app_manager";
     if (std::filesystem::exists(app_manager_dir) && std::filesystem::is_directory(app_manager_dir))
@@ -235,6 +238,45 @@ void Manager::discoverApps()
 
         // Create menu item for app_manager
         auto &stored_app = apps_["app_manager"];
+        XPLMAppendMenuItem(menu_, stored_app->GetName().c_str(),
+                           (void *)stored_app->GetName().c_str(), 0);
+    }
+}
+
+void Manager::addDefaultApps()
+{
+    // Define default URL-based apps here
+    // These are web pages that can be loaded as apps
+    struct DefaultApp
+    {
+        std::string name;
+        std::string url;
+    };
+
+    std::vector<DefaultApp> default_apps = {
+        // Add your default URL apps here, for example:
+        // {"X-Plane Forum", "https://forums.x-plane.org"},
+        // {"Navigraph Charts", "https://charts.navigraph.com"},
+        // {"SimBrief", "https://www.simbrief.com"},
+        {"SkyScript Docs", "https://x-z7a.github.io/SkyScript/"},
+    };
+
+    if (default_apps.empty())
+    {
+        return; // No default apps configured
+    }
+
+    // Add separator before default apps
+    XPLMAppendMenuSeparator(menu_);
+
+    for (const auto &def_app : default_apps)
+    {
+        LogMsg("Adding default app: %s, url: %s", def_app.name.c_str(), def_app.url.c_str());
+
+        auto app = std::make_unique<App>(def_app.name, def_app.url, AppType::URL);
+        apps_.emplace(def_app.name, std::move(app));
+
+        auto &stored_app = apps_[def_app.name];
         XPLMAppendMenuItem(menu_, stored_app->GetName().c_str(),
                            (void *)stored_app->GetName().c_str(), 0);
     }
