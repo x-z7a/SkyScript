@@ -88,7 +88,8 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
     Manager::instance().setPluginDir(base_dir + "Resources/plugins/" + app_name);
     Manager::instance().setOutputDir(base_dir + "Output/" + app_name);
     Manager::instance().setPrefPath(base_dir + "Output/preferences/" + app_name + ".prf");
-    std::filesystem::create_directory(Manager::instance().getOutputDir());
+    std::filesystem::create_directories(Manager::instance().getOutputDir());
+    std::filesystem::create_directories(Manager::instance().getOutputDir() + "/cache");
 
     // Create Top Level Menu
     XPLMMenuID root_menu = XPLMFindPluginsMenu();
@@ -102,6 +103,7 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
     // intialize Ultralight here
     Config config;
     config.user_stylesheet = "body { background-color: #202020; color: #E0E0E0; }";
+    config.cache_path = (output_dir + "/cache").c_str();  // For persistent sessions
     Platform::instance().set_config(config);
     Platform::instance().set_font_loader(GetPlatformFontLoader());
     Platform::instance().set_file_system(GetPlatformFileSystem(plugin_dir.c_str()));

@@ -1,3 +1,4 @@
+#pragma once
 
 #include <string>
 
@@ -97,6 +98,7 @@ private:
     std::string app_name;
     std::string app_dir;
     RefPtr<Renderer> renderer_;
+    RefPtr<Session> session_;  // Per-app session for isolated storage (cookies, localStorage, etc.)
     RefPtr<View> main_view_;
     XPLMWindowID main_window_ = nullptr;
     GLuint texture_id_ = 0;

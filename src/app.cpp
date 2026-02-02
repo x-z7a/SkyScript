@@ -1,9 +1,11 @@
 #include "app.h"
 #include "js_bindings.h"
+#include "manager.h"
 
 #include <fstream>
 #include <cstring>
 #include <vector>
+#include <filesystem>
 
 // Set to 1 to enable debug logging and screenshot saving
 #define DEBUG_DRAW 0
@@ -70,6 +72,13 @@ void App::Destroy()
         LogMsg("[%s] Deleting OpenGL texture", app_name.c_str());
         glDeleteTextures(1, &texture_id_);
         texture_id_ = 0;
+    }
+    
+    // Release session
+    if (session_)
+    {
+        LogMsg("[%s] Releasing session", app_name.c_str());
+        session_ = nullptr;
     }
 }
 
@@ -184,10 +193,22 @@ void App::Initialize(RefPtr<Renderer> renderer)
     // Store renderer reference for creating inspector view later
     renderer_ = renderer;
 
+    // Create the app's cache folder for session storage
+    std::string app_cache_dir = Manager::instance().getOutputDir() + "/cache/" + app_name;
+    std::filesystem::create_directories(app_cache_dir);
+
+    // Create a persistent session for this app (isolated cookies, localStorage, indexedDB, etc.)
+    session_ = renderer->CreateSession(true, app_name.c_str());
+    LogMsg("[%s] Created session: %s (persistent=%d, path=%s)", 
+           app_name.c_str(), 
+           session_->name().utf8().data(),
+           session_->is_persistent(),
+           session_->disk_path().utf8().data());
+
     // create a view for this app with actual dimensions
     view_width_ = 800;
     view_height_ = 600;
-    main_view_ = renderer->CreateView(view_width_, view_height_, ViewConfig(), nullptr);
+    main_view_ = renderer->CreateView(view_width_, view_height_, ViewConfig(), session_);
     main_view_->set_view_listener(this);
     main_view_->set_load_listener(this);
 
