@@ -256,8 +256,9 @@ void Manager::addDefaultApps()
     std::vector<DefaultApp> default_apps = {
         // Add your default URL apps here, for example:
         // {"X-Plane Forum", "https://forums.x-plane.org"},
-        // {"Navigraph Charts", "https://charts.navigraph.com"},
-        // {"SimBrief", "https://www.simbrief.com"},
+        {"SkyVector", "https://skyvector.com"},
+        {"Navigraph Charts", "https://charts.navigraph.com"},
+        {"SimBrief", "https://dispatch.simbrief.com/home"},
         {"SkyScript Docs", "https://x-z7a.github.io/SkyScript/"},
     };
 
@@ -322,7 +323,7 @@ void Manager::drawAllApps()
             app->Draw();
         }
         // Also draw inspector if visible
-        if (app && app->IsInspectorVisible())
+        if (app && app->IsInspectorVisible() && app->IsVisible())
         {
             app->DrawInspector();
         }
