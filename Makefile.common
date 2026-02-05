@@ -1,6 +1,6 @@
 VPATH:=.:../xplib
 SDK=SDK
-INCLUDES=-I. -I../xplib -I$(SDK)/CHeaders/XPLM -Isrc
+INCLUDES=-I. -I../xplib -I$(SDK)/CHeaders/XPLM -Isrc -Isrc/bindings
 PROJECT_NAME=SkyScript
 
 # build version.h
@@ -18,7 +18,7 @@ $(shell if [ ! -f $(VH) ]; then mv $(VH).n $(VH); elif cmp -s $(VH).n $(VH); the
 # platform independent defines
 DEFINES= -DXPLM200 -DXPLM210 -DXPLM300 -DXPLM301
 
-SOURCES_CPP=$(wildcard src/*.cpp) log_msg.cpp
+SOURCES_CPP=$(wildcard src/*.cpp) $(wildcard src/bindings/*.cpp) log_msg.cpp
 
 # the c++ standard to use
 CXXSTD=-std=c++20

@@ -38,11 +38,17 @@ LIBS=-lcurl -lz -lOpenGL \
 	-LUltralight-SDK-1.4.0-Linux/bin \
 	-ludev
 
-$(OBJDIR)/%.o: %.cpp $(DEPDIR)/%.d version.mak | $(DEPDIR)/src $(OBJDIR)/src
+$(OBJDIR)/%.o: %.cpp $(DEPDIR)/%.d version.mak | $(DEPDIR)/src $(OBJDIR)/src $(DEPDIR)/src/bindings $(OBJDIR)/src/bindings
 	$(COMPILE.cpp) -o $@  $<
 
 $(OBJDIR)/%.o: %.c $(DEPDIR)/%.d version.mak | $(DEPDIR)/src $(OBJDIR)/src
 	$(COMPILE.c) -o $@  $<
+
+$(DEPDIR)/src/bindings:
+	@mkdir -p $@
+
+$(OBJDIR)/src/bindings:
+	@mkdir -p $@
 
 all: $(TARGET)
 
@@ -54,10 +60,12 @@ $(TARGET): $(OBJECTS)
 $(DEPDIR)/src:
 	@mkdir -p $@
 	@mkdir -p $(DEPDIR)/src/third_party/hidapi
+	@mkdir -p $(DEPDIR)/src/bindings
 
 $(OBJDIR)/src:
 	@mkdir -p $@
 	@mkdir -p $(OBJDIR)/src/third_party/hidapi
+	@mkdir -p $(OBJDIR)/src/bindings
 
 $(DEPFILES):
 include $(wildcard $(DEPFILES))

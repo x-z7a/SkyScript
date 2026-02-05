@@ -3,7 +3,7 @@
 #include <string>
 
 #include "log_msg.h"
-#include "js_bindings.h"
+#include "bindings/bindings.h"
 
 #include <Ultralight/Ultralight.h>
 #include <JavaScriptCore/JavaScript.h>

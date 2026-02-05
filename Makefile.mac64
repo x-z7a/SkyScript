@@ -62,6 +62,7 @@ LIBS_X86=$(LIBS) -LUltralight-SDK-1.4.0-Mac-X86/bin
 
 all: $(TARGET)
     $(shell [ -d $(OBJDIR)/src/third_party/hidapi ] || mkdir -p $(OBJDIR)/src/third_party/hidapi)
+    $(shell [ -d $(OBJDIR)/src/bindings ] || mkdir -p $(OBJDIR)/src/bindings)
 
 $(OBJDIR)/%.o_arm: %.cpp version.mak
 	$(CXXa) $(CXXFLAGS_ARM) -o $@ -c $<

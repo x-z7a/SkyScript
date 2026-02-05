@@ -1,5 +1,5 @@
 #include "app.h"
-#include "js_bindings.h"
+#include "bindings/bindings.h"
 #include "manager.h"
 
 #include <cstring>
