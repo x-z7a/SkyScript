@@ -81,11 +81,11 @@ $(TARGET_x86): $(OBJECTS_x86)
 $(TARGET): $(TARGET_arm) $(TARGET_x86)
 	lipo -create -output $@ $(TARGET_arm) $(TARGET_x86)
 	if [ -d "/Volumes/storage/X-Plane 12/Resources/plugins" ]; then \
-        mkdir -p "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/mac_x64"; \
-        mkdir -p "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/mac_x64/lib"; \
+        mkdir -p "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/"; \
+        mkdir -p "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/lib"; \
         mkdir -p "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/apps"; \
-        cp -p build/mac/mac.xpl_arm /Volumes/storage/X-Plane\ 12/Resources/plugins/${PROJECT_NAME}/mac_x64/${PROJECT_NAME}.xpl; \
-        cp -p Ultralight-SDK-1.4.0-Mac-Arm64/bin/* /Volumes/storage/X-Plane\ 12/Resources/plugins/${PROJECT_NAME}/mac_x64/lib; \
+        cp -p build/mac/mac.xpl_arm /Volumes/storage/X-Plane\ 12/Resources/plugins/${PROJECT_NAME}/mac.xpl; \
+        cp -p Ultralight-SDK-1.4.0-Mac-Arm64/bin/* /Volumes/storage/X-Plane\ 12/Resources/plugins/${PROJECT_NAME}/lib; \
         cp -rp Ultralight-SDK-1.4.0-Mac-Arm64/resources /Volumes/storage/X-Plane\ 12/Resources/plugins/${PROJECT_NAME}; \
         cp -rp Ultralight-SDK-1.4.0-Mac-Arm64/inspector /Volumes/storage/X-Plane\ 12/Resources/plugins/${PROJECT_NAME}; \
         rm -rf "/Volumes/storage/X-Plane 12/Resources/plugins/${PROJECT_NAME}/apps/app_manager"; \

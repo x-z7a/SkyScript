@@ -84,8 +84,15 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
     char buffer[2048];
     XPLMGetSystemPath(buffer);
     std::string base_dir(buffer); // has trailing slash
+    // get current xpl location
+    char xpl_path[2048];
+    XPLMGetPluginInfo(XPLMGetMyID(), nullptr, xpl_path, nullptr, nullptr);
+    std::string plugin_path(xpl_path);
+    // go back up two levels to get to the plugin's root folder
+    std::string current_plugin_dir = plugin_path.substr(0, plugin_path.find_last_of("/\\"));
+
     Manager::instance().setXpDir(base_dir);
-    Manager::instance().setPluginDir(base_dir + "Resources/plugins/" + app_name);
+    Manager::instance().setPluginDir(current_plugin_dir);
     Manager::instance().setOutputDir(base_dir + "Output/" + app_name);
     Manager::instance().setPrefPath(base_dir + "Output/preferences/" + app_name + ".prf");
     std::filesystem::create_directories(Manager::instance().getOutputDir());
@@ -102,8 +109,8 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
 
     // intialize Ultralight here
     Config config;
-    config.user_stylesheet = "body { background-color: #202020; color: #E0E0E0; }";
-    config.cache_path = (output_dir + "/cache").c_str();  // For persistent sessions
+    // config.user_stylesheet = "body { background-color: #202020; color: #E0E0E0; }";
+    config.cache_path = (output_dir + "/cache").c_str(); // For persistent sessions
     Platform::instance().set_config(config);
     Platform::instance().set_font_loader(GetPlatformFontLoader());
     Platform::instance().set_file_system(GetPlatformFileSystem(plugin_dir.c_str()));

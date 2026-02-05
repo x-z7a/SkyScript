@@ -69,18 +69,18 @@ runs:
         rsync -av --exclude='node_modules' --exclude='build' ./samples/app_manager/ ./build/${PROJECT}/samples/app_manager/
 
         # Copy plugin binaries
-        cp ./download/build-windows/build/win.xpl ./build/${PROJECT}/win_x64/${PROJECT}.xpl
-        cp ./download/build-linux/build/lin.xpl ./build/${PROJECT}/lin_x64/${PROJECT}.xpl
-        cp ./download/build-mac/build/mac.xpl ./build/${PROJECT}/mac_x64/${PROJECT}.xpl
+        cp ./download/build-windows/build/win.xpl ./build/${PROJECT}/win.xpl
+        cp ./download/build-linux/build/lin.xpl ./build/${PROJECT}/lin.xpl
+        cp ./download/build-mac/build/mac.xpl ./build/${PROJECT}/mac.xpl
 
         # Copy Windows Ultralight runtime
-        cp ./download/build-windows/Ultralight-SDK-1.4.0-Win64/bin/*.dll ./build/${PROJECT}/win_x64/
+        cp ./download/build-windows/Ultralight-SDK-1.4.0-Win64/bin/*.dll ./build/${PROJECT}/
 
         # Copy Linux Ultralight runtime
-        cp ./download/build-linux/Ultralight-SDK-1.4.0-Linux/bin/*.so ./build/${PROJECT}/lin_x64/lib/
+        cp ./download/build-linux/Ultralight-SDK-1.4.0-Linux/bin/*.so ./build/${PROJECT}/lib/
 
         # Copy Mac Ultralight runtime (universal dylibs)
-        cp ./download/build-mac/build/ultralight-libs/*.dylib ./build/${PROJECT}/mac_x64/lib/
+        cp ./download/build-mac/build/ultralight-libs/*.dylib ./build/${PROJECT}/lib/
 
         # Copy ultralight EULA and LICENSE
         cp ./download/build-windows/Ultralight-SDK-1.4.0-Win64/license/* ./build/${PROJECT}/license_ultralight
