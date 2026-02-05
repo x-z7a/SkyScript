@@ -55,6 +55,7 @@ export default defineConfig({
             { text: 'Scenery API', link: '/api/SceneryAPI' },
             { text: 'Instance API', link: '/api/InstanceAPI' },
             { text: 'Graphics API', link: '/api/GraphicsAPI' },
+            { text: 'HID API', link: '/api/HidAPI' },
             { text: 'SkyScript API', link: '/api/SkyScriptAPI' }
           ]
         }

@@ -10,6 +10,8 @@
 #include "XPLMGraphics.h"
 #include "log_msg.h"
 
+#include "third_party/hidapi/hidapi.h"
+
 #include <unordered_map>
 #include <string>
 #include <mutex>
@@ -324,4 +326,96 @@ private:
      * @return true if successful
      */
     static JSValue JS_OpenAppInspector(const JSObject& thisObject, const JSArgs& args);
+
+    // =========================================================================
+    // HID API - USB Human Interface Device access
+    // =========================================================================
+
+    // HID device handle storage - maps device ID to handle
+    static std::unordered_map<int, hid_device*> hid_device_cache_;
+    static int next_hid_device_id_;
+    static bool hid_initialized_;
+
+    // Ensure HIDAPI is initialized (lazy init on first use)
+    static void EnsureHidInitialized();
+
+    /**
+     * @brief Enumerate connected HID devices
+     * @param vendorId (optional) Filter by vendor ID (0 = all)
+     * @param productId (optional) Filter by product ID (0 = all)
+     * @return Array of device info objects
+     */
+    static JSValue JS_HidEnumerate(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Open a HID device by vendor/product ID
+     * @param vendorId Vendor ID
+     * @param productId Product ID
+     * @param serialNumber (optional) Serial number string
+     * @return Device handle ID or null if failed
+     */
+    static JSValue JS_HidOpen(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Open a HID device by platform-specific path
+     * @param path Device path from enumerate
+     * @return Device handle ID or null if failed
+     */
+    static JSValue JS_HidOpenPath(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Close a HID device
+     * @param deviceId Device handle ID
+     * @return true if successful
+     */
+    static JSValue JS_HidClose(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Write data to a HID device
+     * @param deviceId Device handle ID
+     * @param data Array of bytes to write (first byte is report ID)
+     * @return Number of bytes written or -1 on error
+     */
+    static JSValue JS_HidWrite(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Read data from a HID device
+     * @param deviceId Device handle ID
+     * @param length Maximum number of bytes to read
+     * @param timeoutMs (optional) Timeout in milliseconds (-1 = blocking)
+     * @return Array of bytes read, or null on error
+     */
+    static JSValue JS_HidRead(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Send a feature report
+     * @param deviceId Device handle ID
+     * @param data Array of bytes (first byte is report ID)
+     * @return Number of bytes sent or -1 on error
+     */
+    static JSValue JS_HidSendFeatureReport(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Get a feature report
+     * @param deviceId Device handle ID
+     * @param reportId Report ID
+     * @param length Maximum number of bytes to read
+     * @return Array of bytes read, or null on error
+     */
+    static JSValue JS_HidGetFeatureReport(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Get device info strings
+     * @param deviceId Device handle ID
+     * @return Object with manufacturer, product, serialNumber
+     */
+    static JSValue JS_HidGetDeviceInfo(const JSObject& thisObject, const JSArgs& args);
+
+    /**
+     * @brief Set non-blocking mode for reads
+     * @param deviceId Device handle ID
+     * @param nonBlocking true for non-blocking, false for blocking
+     * @return true if successful
+     */
+    static JSValue JS_HidSetNonBlocking(const JSObject& thisObject, const JSArgs& args);
 };

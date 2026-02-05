@@ -7,10 +7,29 @@ interface PlacedObject {
   instanceId: number;
 }
 
+// HID device info from enumerate()
+interface HidDeviceInfo {
+  path: string;
+  vendorId: number;
+  productId: number;
+  serialNumber: string;
+  manufacturer: string;
+  product: string;
+  usagePage: number;
+  usage: number;
+  interfaceNumber: number;
+  releaseNumber: number;
+}
+
 function App() {
   const [count, setCount] = useState(0);
   const [message, setMessage] = useState('');
   const [time, setTime] = useState(new Date().toLocaleTimeString());
+
+  // HID device state
+  const [hidDevices, setHidDevices] = useState<HidDeviceInfo[]>([]);
+  const [hidScanning, setHidScanning] = useState(false);
+  const [hidError, setHidError] = useState<string | null>(null);
 
   // X-Plane data states
   const [altitude, setAltitude] = useState<number | null>(null);
@@ -150,6 +169,24 @@ function App() {
     }
   }, [placedObject]);
 
+  const scanHidDevices = useCallback(() => {
+    if (typeof XPlane === 'undefined') {
+      setHidError('XPlane API not available');
+      return;
+    }
+    setHidScanning(true);
+    setHidError(null);
+    try {
+      const devices: HidDeviceInfo[] = XPlane.hid.enumerate();
+      setHidDevices(devices);
+    } catch (e) {
+      setHidError(`Error scanning: ${e}`);
+      setHidDevices([]);
+    } finally {
+      setHidScanning(false);
+    }
+  }, []);
+
   return (
     <div className="hello-world">
       <div className="container">
@@ -191,6 +228,40 @@ function App() {
             {placedObject ? '🔴 Remove Cone' : '🟠 Place Cone'}
           </button>
           {objectStatus && <p className="object-status">{objectStatus}</p>}
+        </div>
+
+        {/* USB HID Devices */}
+        <div className="hid-section">
+          <h3 className="hid-title">🔌 USB HID Devices</h3>
+          <button
+            className={`hid-scan-btn ${hidScanning ? 'scanning' : ''}`}
+            onClick={scanHidDevices}
+            disabled={hidScanning}
+          >
+            {hidScanning ? '⏳ Scanning…' : '🔍 Scan Devices'}
+          </button>
+          {hidError && <p className="hid-error">{hidError}</p>}
+          {hidDevices.length > 0 ? (
+            <div className="hid-device-list">
+              <p className="hid-count">{hidDevices.length} device(s) found</p>
+              {hidDevices.map((dev, i) => (
+                <div key={i} className="hid-device-card">
+                  <span className="hid-device-name">
+                    {dev.product || 'Unknown Device'}
+                  </span>
+                  <span className="hid-device-mfr">
+                    {dev.manufacturer || '—'}
+                  </span>
+                  <span className="hid-device-ids">
+                    VID: 0x{dev.vendorId.toString(16).toUpperCase().padStart(4, '0')}{' · '}
+                    PID: 0x{dev.productId.toString(16).toUpperCase().padStart(4, '0')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            !hidError && <p className="hid-empty">No devices found — click Scan</p>
+          )}
         </div>
 
         <div className="counter-section">

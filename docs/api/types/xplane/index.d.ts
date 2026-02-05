@@ -45,6 +45,11 @@ interface XPlaneAPI {
      * Graphics API for coordinate conversions
      */
     graphics: GraphicsAPI;
+
+    /**
+     * HID API for USB Human Interface Device access
+     */
+    hid: HidAPI;
 }
 
 /**
@@ -524,6 +529,172 @@ interface GraphicsAPI {
      * @returns Local OpenGL coordinates
      */
     worldToLocal(latitude: number, longitude: number, altitude: number): LocalCoordinates;
+}
+
+// =============================================================================
+// HID API Types
+// =============================================================================
+
+/**
+ * Information about a connected HID device
+ */
+interface HidDeviceInfo {
+    /** Platform-specific device path */
+    path: string;
+    /** USB Vendor ID */
+    vendorId: number;
+    /** USB Product ID */
+    productId: number;
+    /** Serial number string */
+    serialNumber: string;
+    /** Device release number (BCD) */
+    releaseNumber: number;
+    /** Manufacturer name */
+    manufacturer: string;
+    /** Product name */
+    product: string;
+    /** HID Usage Page (Windows/Mac) */
+    usagePage: number;
+    /** HID Usage (Windows/Mac) */
+    usage: number;
+    /** USB interface number */
+    interfaceNumber: number;
+}
+
+/**
+ * Device info strings returned by getDeviceInfo()
+ */
+interface HidDeviceStrings {
+    /** Manufacturer name */
+    manufacturer: string;
+    /** Product name */
+    product: string;
+    /** Serial number */
+    serialNumber: string;
+}
+
+/**
+ * HID API for communicating with USB Human Interface Devices
+ *
+ * Provides low-level access to HID devices such as joysticks, button boxes,
+ * custom controllers, LED panels, and other USB peripherals. Built on the
+ * cross-platform HIDAPI library.
+ *
+ * @example
+ * ```typescript
+ * // List all connected HID devices
+ * const devices = XPlane.hid.enumerate();
+ * devices.forEach(d => {
+ *     console.log(`${d.manufacturer} ${d.product} (VID=0x${d.vendorId.toString(16)})`);
+ * });
+ *
+ * // Open a device and read data
+ * const dev = XPlane.hid.open(0x1234, 0x5678);
+ * if (dev) {
+ *     XPlane.hid.setNonBlocking(dev, true);
+ *     const data = XPlane.hid.read(dev, 64, 100);
+ *     if (data) {
+ *         console.log('Received:', data);
+ *     }
+ *     XPlane.hid.close(dev);
+ * }
+ * ```
+ */
+interface HidAPI {
+    /**
+     * Enumerate connected HID devices
+     *
+     * @param vendorId - Filter by vendor ID (0 or omit for all devices)
+     * @param productId - Filter by product ID (0 or omit for all devices)
+     * @returns Array of device info objects
+     */
+    enumerate(vendorId?: number, productId?: number): HidDeviceInfo[];
+
+    /**
+     * Open a HID device by vendor and product ID
+     *
+     * @param vendorId - USB Vendor ID
+     * @param productId - USB Product ID
+     * @param serialNumber - Serial number string (optional, for selecting among multiple identical devices)
+     * @returns Device handle ID, or `null` if the device could not be opened
+     */
+    open(vendorId: number, productId: number, serialNumber?: string): number | null;
+
+    /**
+     * Open a HID device by platform-specific path
+     *
+     * @param path - Device path from enumerate()
+     * @returns Device handle ID, or `null` if the device could not be opened
+     */
+    openPath(path: string): number | null;
+
+    /**
+     * Close an open HID device
+     *
+     * @param deviceId - Device handle ID from open() or openPath()
+     * @returns `true` if successful
+     */
+    close(deviceId: number): boolean;
+
+    /**
+     * Write an output report to a HID device
+     *
+     * The first byte must be the Report ID. For devices with a single report,
+     * use 0x00 as the first byte.
+     *
+     * @param deviceId - Device handle ID
+     * @param data - Array of bytes to write
+     * @returns Number of bytes written, or -1 on error
+     */
+    write(deviceId: number, data: number[]): number;
+
+    /**
+     * Read an input report from a HID device
+     *
+     * @param deviceId - Device handle ID
+     * @param length - Maximum number of bytes to read
+     * @param timeoutMs - Timeout in milliseconds (optional; -1 = blocking, omit = use current blocking mode)
+     * @returns Array of bytes read, empty array if no data (non-blocking), or `null` on error
+     */
+    read(deviceId: number, length: number, timeoutMs?: number): number[] | null;
+
+    /**
+     * Send a feature report to a HID device
+     *
+     * The first byte must be the Report ID.
+     *
+     * @param deviceId - Device handle ID
+     * @param data - Array of bytes to send
+     * @returns Number of bytes sent, or -1 on error
+     */
+    sendFeatureReport(deviceId: number, data: number[]): number;
+
+    /**
+     * Get a feature report from a HID device
+     *
+     * @param deviceId - Device handle ID
+     * @param reportId - The Report ID to request
+     * @param length - Maximum number of bytes to read
+     * @returns Array of bytes read, or `null` on error
+     */
+    getFeatureReport(deviceId: number, reportId: number, length: number): number[] | null;
+
+    /**
+     * Get manufacturer, product, and serial number strings from an open device
+     *
+     * @param deviceId - Device handle ID
+     * @returns Object with manufacturer, product, and serialNumber strings
+     */
+    getDeviceInfo(deviceId: number): HidDeviceStrings | null;
+
+    /**
+     * Set blocking or non-blocking mode for reads
+     *
+     * @param deviceId - Device handle ID
+     * @param nonBlocking - `true` for non-blocking reads, `false` for blocking
+     * @returns `true` if successful
+     */
+    setNonBlocking(deviceId: number, nonBlocking: boolean): boolean;
 }
 
 export {};
