@@ -34,9 +34,8 @@ export default defineConfig({
         {
           text: 'Building Apps',
           items: [
-            { text: 'Creating Your First App', link: '/guide/first-app' },
-            { text: 'Using TypeScript', link: '/guide/typescript' },
-            { text: 'Styling', link: '/guide/styling' }
+            { text: 'Project Structure', link: '/guide/project-structure' },
+            { text: 'Using the API', link: '/guide/using-the-api' },
           ]
         },
         {
