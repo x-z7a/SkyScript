@@ -10,6 +10,7 @@ The SkyScript API provides JavaScript/TypeScript access to X-Plane SDK functiona
 | [`XPlane.scenery`](./SceneryAPI) | Load objects, probe terrain, magnetic variation |
 | [`XPlane.instance`](./InstanceAPI) | Create and manage object instances |
 | [`XPlane.graphics`](./GraphicsAPI) | Coordinate system conversions |
+| [`XPlane.hid`](./HidAPI) | USB HID device communication |
 | `SkyScript` | App management and debugging |
 
 ## Quick Examples
@@ -71,6 +72,27 @@ const local = XPlane.graphics.worldToLocal(47.45, -122.31, 100);
 
 // Convert local back to GPS
 const world = XPlane.graphics.localToWorld(local.x, local.y, local.z);
+```
+
+### USB HID Devices
+
+```typescript
+// List all connected HID devices
+const devices = XPlane.hid.enumerate();
+devices.forEach(d => {
+  console.log(`${d.manufacturer} ${d.product} (VID=0x${d.vendorId.toString(16)})`);
+});
+
+// Open a device, read data, and close
+const dev = XPlane.hid.open(0x1234, 0x5678);
+if (dev) {
+  XPlane.hid.setNonBlocking(dev, true);
+  const data = XPlane.hid.read(dev, 64, 100);
+  if (data) {
+    console.log('Received bytes:', data);
+  }
+  XPlane.hid.close(dev);
+}
 ```
 
 ### App Management (SkyScript API)

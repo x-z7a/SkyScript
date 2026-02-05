@@ -25,8 +25,9 @@ REM Compiler flags
 REM /Zc:preprocessor - Enable conforming preprocessor (required for __VA_OPT__)
 REM /FI - Force include MSVC compatibility header to handle GCC-specific syntax
 set CXXFLAGS=/std:c++20 /O2 /EHsc /MD /W3 /Zc:preprocessor /FImsvc_compat.h
+set CFLAGS=/O2 /MD /W3
 set DEFINES=/DXPLM200 /DXPLM210 /DXPLM300 /DXPLM301 /DWINDOWS /DWIN32 /DIBM=1
-set INCLUDES=/I. /I..\xplib /I%SDK%\CHeaders\XPLM /IUltralight-SDK-1.4.0-Win64\include
+set INCLUDES=/I. /I..\xplib /I%SDK%\CHeaders\XPLM /Isrc /IUltralight-SDK-1.4.0-Win64\include
 
 REM Compile source files from src directory (including subdirectories)
 echo Compiling source files...
@@ -42,6 +43,11 @@ for /r src %%f in (*.cpp) do (
 
 echo Compiling ..\xplib\log_msg.cpp...
 cl.exe /c %CXXFLAGS% %DEFINES% %INCLUDES% /Fo%OBJDIR%\log_msg.obj ..\xplib\log_msg.cpp
+if errorlevel 1 exit /b 1
+
+echo Compiling HIDAPI Windows backend...
+if not exist %OBJDIR%\src\third_party\hidapi mkdir %OBJDIR%\src\third_party\hidapi
+cl.exe /c %CFLAGS% %DEFINES% %INCLUDES% /Fo%OBJDIR%\src\third_party\hidapi\hid_windows.obj src\third_party\hidapi\hid_windows.c
 if errorlevel 1 exit /b 1
 
 REM Collect all object files

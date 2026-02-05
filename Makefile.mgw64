@@ -2,6 +2,9 @@ OBJDIR=./build/win
 
 include Makefile.common
 
+# HIDAPI Windows backend (WinAPI)
+SOURCES_C=src/third_party/hidapi/hid_windows.c
+
 INCLUDES+=-IUltralight-SDK-1.4.0-Win64/include
 
 TARGET=build/win.xpl
@@ -48,9 +51,11 @@ $(TARGET): $(OBJECTS)
 
 $(DEPDIR)/src:
 	@mkdir -p $@
+	@mkdir -p $(DEPDIR)/src/third_party/hidapi
 
 $(OBJDIR)/src:
 	@mkdir -p $@
+	@mkdir -p $(OBJDIR)/src/third_party/hidapi
 
 
 $(DEPFILES):

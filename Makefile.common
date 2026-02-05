@@ -1,6 +1,6 @@
 VPATH:=.:../xplib
 SDK=SDK
-INCLUDES=-I. -I../xplib -I$(SDK)/CHeaders/XPLM
+INCLUDES=-I. -I../xplib -I$(SDK)/CHeaders/XPLM -Isrc
 PROJECT_NAME=SkyScript
 
 # build version.h
