@@ -29,7 +29,6 @@ export default defineConfig({
           items: [
             { text: 'Introduction', link: '/guide/' },
             { text: 'Quick Start', link: '/guide/quick-start' },
-            { text: 'Project Structure', link: '/guide/project-structure' }
           ]
         },
         {

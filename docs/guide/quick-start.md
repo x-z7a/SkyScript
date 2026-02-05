@@ -18,14 +18,11 @@ This guide walks you through creating your first SkyScript app using React and T
 3. The folder structure should look like:
    ```
    SkyScript/
-   ├── mac_x64/
-   │   ├── SkyScript.xpl
-   │   └── lib/
-   ├── win_x64/
-   │   ├── SkyScript.xpl
-   │   └── lib/
+   ├── lib/
+   ├── mac.xpl
+   ├── win.xpl
    ├── resources/
-   ├── inspector/      # Developer tools (WebKit Inspector)
+   ├── inspector/      # Developer tool (WebKit Inspector)
    └── apps/
        └── hello-world/
    ```
