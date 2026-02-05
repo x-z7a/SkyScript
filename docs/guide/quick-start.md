@@ -67,6 +67,7 @@ Update `package.json` to set the homepage for relative paths:
 {
   "homepage": "./"
 }
+```
 
 ### 4. Configure the App Manifest (CRA)
 
@@ -89,7 +90,6 @@ Example `public/manifest.json`:
   "width": 960,
   "height": 600
 }
-```
 ```
 
 ## Your First X-Plane App
