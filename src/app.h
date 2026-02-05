@@ -74,6 +74,7 @@ public:
     
     // Getters
     const std::string& GetName() const { return app_name; }
+    const std::string& GetDisplayName() const { return app_display_name; }
     
     // Force the view to repaint
     void ForceRepaint();
@@ -96,6 +97,7 @@ public:
 
 private:
     std::string app_name;
+    std::string app_display_name;
     std::string app_dir;
     RefPtr<Renderer> renderer_;
     RefPtr<Session> session_;  // Per-app session for isolated storage (cookies, localStorage, etc.)

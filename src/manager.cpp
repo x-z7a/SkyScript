@@ -222,7 +222,7 @@ void Manager::discoverApps()
 
             // Create menu item for this app (use the stored name from map key)
             auto &stored_app = apps_[app_name];
-            XPLMAppendMenuItem(menu_, stored_app->GetName().c_str(),
+            XPLMAppendMenuItem(menu_, stored_app->GetDisplayName().c_str(),
                                (void *)stored_app->GetName().c_str(), 0);
         }
     }
@@ -242,8 +242,8 @@ void Manager::discoverApps()
 
         // Create menu item for app_manager
         auto &stored_app = apps_["app_manager"];
-        XPLMAppendMenuItem(menu_, stored_app->GetName().c_str(),
-                           (void *)stored_app->GetName().c_str(), 0);
+        XPLMAppendMenuItem(menu_, stored_app->GetDisplayName().c_str(),
+                   (void *)stored_app->GetName().c_str(), 0);
     }
 }
 

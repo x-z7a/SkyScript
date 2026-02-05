@@ -7,17 +7,53 @@
 #include <vector>
 #include <filesystem>
 
+#include "third_party/picojson.h"
+
+namespace
+{
+    std::string ReadManifestShortName(const std::string &manifest_path)
+    {
+        std::ifstream file(manifest_path);
+        if (!file.is_open())
+        {
+            return "";
+        }
+        std::string contents((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+        picojson::value root;
+        std::string err = picojson::parse(root, contents);
+        if (!err.empty() || !root.is_object())
+        {
+            return "";
+        }
+
+        const auto &obj = root.get_object();
+        auto it = obj.find("short_name");
+        if (it == obj.end() || !it->second.is_string())
+        {
+            return "";
+        }
+
+        return it->second.get_string();
+    }
+}
+
 // Set to 1 to enable debug logging and screenshot saving
 #define DEBUG_DRAW 0
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-App::App() : app_name(""), app_dir("") {}
+App::App() : app_name(""), app_display_name(""), app_dir("") {}
 
 App::App(const std::string &name, const std::string &dir)
-    : app_name(name), app_dir(dir)
+    : app_name(name), app_display_name(name), app_dir(dir)
 {
+    std::string short_name = ReadManifestShortName(app_dir + "/manifest.json");
+    if (!short_name.empty())
+    {
+        app_display_name = short_name;
+    }
     LogMsg("App created: %s, dir: %s", app_name.c_str(), app_dir.c_str());
 }
 
@@ -298,7 +334,7 @@ void App::Initialize(RefPtr<Renderer> renderer)
     params.decorateAsFloatingWindow = xplm_WindowDecorationRoundRectangle;
 
     main_window_ = XPLMCreateWindowEx(&params);
-    XPLMSetWindowTitle(main_window_, app_name.c_str());
+    XPLMSetWindowTitle(main_window_, app_display_name.c_str());
     XPLMSetWindowResizingLimits(main_window_, 200, 200, 2000, 2000);  // Allow resizing
     
     // Check if VR is enabled and set appropriate window mode
@@ -480,7 +516,7 @@ void App::CreateInspectorWindow()
     params.decorateAsFloatingWindow = xplm_WindowDecorationRoundRectangle;
     
     inspector_window_ = XPLMCreateWindowEx(&params);
-    std::string title = app_name + " - Inspector";
+    std::string title = app_display_name + " - Inspector";
     XPLMSetWindowTitle(inspector_window_, title.c_str());
     XPLMSetWindowResizingLimits(inspector_window_, 400, 300, 2000, 2000);
     

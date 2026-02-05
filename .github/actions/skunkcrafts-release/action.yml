@@ -48,9 +48,7 @@ runs:
 
         # Create directory structure
         mkdir -p ./build/${PROJECT}/resources
-        mkdir -p ./build/${PROJECT}/win_x64
-        mkdir -p ./build/${PROJECT}/lin_x64/lib
-        mkdir -p ./build/${PROJECT}/mac_x64/lib
+        mkdir -p ./build/${PROJECT}/lib
         mkdir -p ./build/${PROJECT}/license_ultralight
         mkdir -p ./build/${PROJECT}/apps/hello-world
         mkdir -p ./build/${PROJECT}/apps/app_manager
