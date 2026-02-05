@@ -67,6 +67,29 @@ Update `package.json` to set the homepage for relative paths:
 {
   "homepage": "./"
 }
+
+### 4. Configure the App Manifest (CRA)
+
+Create React App generates `public/manifest.json` automatically. SkyScript reads this file from your built app and uses:
+
+- `short_name` → menu label and window title
+- `width` / `height` → initial window size (defaults to 800x600 if omitted)
+
+Example `public/manifest.json`:
+
+```json
+{
+  "short_name": "My X-Plane App",
+  "name": "My X-Plane App",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff",
+  "width": 960,
+  "height": 600
+}
+```
 ```
 
 ## Your First X-Plane App
