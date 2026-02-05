@@ -2,41 +2,11 @@
 #include "js_bindings.h"
 #include "manager.h"
 
-#include <fstream>
 #include <cstring>
 #include <vector>
 #include <filesystem>
 
-#include "third_party/picojson.h"
-
-namespace
-{
-    std::string ReadManifestShortName(const std::string &manifest_path)
-    {
-        std::ifstream file(manifest_path);
-        if (!file.is_open())
-        {
-            return "";
-        }
-        std::string contents((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-
-        picojson::value root;
-        std::string err = picojson::parse(root, contents);
-        if (!err.empty() || !root.is_object())
-        {
-            return "";
-        }
-
-        const auto &obj = root.get_object();
-        auto it = obj.find("short_name");
-        if (it == obj.end() || !it->second.is_string())
-        {
-            return "";
-        }
-
-        return it->second.get_string();
-    }
-}
+#include "manifest_config.h"
 
 // Set to 1 to enable debug logging and screenshot saving
 #define DEBUG_DRAW 0
@@ -49,11 +19,13 @@ App::App() : app_name(""), app_display_name(""), app_dir("") {}
 App::App(const std::string &name, const std::string &dir)
     : app_name(name), app_display_name(name), app_dir(dir)
 {
-    std::string short_name = ReadManifestShortName(app_dir + "/manifest.json");
-    if (!short_name.empty())
+    ManifestConfig config = ReadManifestConfig(app_dir + "/manifest.json");
+    if (!config.short_name.empty())
     {
-        app_display_name = short_name;
+        app_display_name = config.short_name;
     }
+    view_width_ = config.width;
+    view_height_ = config.height;
     LogMsg("App created: %s, dir: %s", app_name.c_str(), app_dir.c_str());
 }
 
@@ -242,8 +214,6 @@ void App::Initialize(RefPtr<Renderer> renderer)
            session_->disk_path().utf8().data());
 
     // create a view for this app with actual dimensions
-    view_width_ = 800;
-    view_height_ = 600;
     main_view_ = renderer->CreateView(view_width_, view_height_, ViewConfig(), session_);
     main_view_->set_view_listener(this);
     main_view_->set_load_listener(this);
