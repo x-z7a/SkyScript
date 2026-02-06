@@ -38,6 +38,8 @@ LIBS=-lcurl -lz -lOpenGL \
 	-LUltralight-SDK-1.4.0-Linux/bin \
 	-ludev
 
+all: $(TARGET)
+
 $(OBJDIR)/%.o: %.cpp $(DEPDIR)/%.d version.mak | $(DEPDIR)/src $(OBJDIR)/src $(DEPDIR)/src/bindings $(OBJDIR)/src/bindings
 	$(COMPILE.cpp) -o $@  $<
 
@@ -49,8 +51,6 @@ $(DEPDIR)/src/bindings:
 
 $(OBJDIR)/src/bindings:
 	@mkdir -p $@
-
-all: $(TARGET)
 
 XPL_DIR=/e/X-Plane-12-test
 

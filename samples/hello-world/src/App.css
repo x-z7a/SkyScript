@@ -344,3 +344,45 @@ h1 {
   opacity: 0.6;
   font-style: italic;
 }
+
+/* App Info Section */
+.app-info {
+  margin-bottom: 25px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  text-align: left;
+}
+
+.app-info-title {
+  font-size: 16px;
+  margin-bottom: 12px;
+  opacity: 0.9;
+}
+
+.app-info-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  align-items: baseline;
+}
+
+.app-info-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.6;
+}
+
+.app-info-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #81c784;
+}
+
+.app-info-path {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 400;
+  word-break: break-all;
+}

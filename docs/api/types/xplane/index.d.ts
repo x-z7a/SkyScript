@@ -20,6 +20,12 @@ declare global {
      * The XPlane global object provides access to X-Plane SDK functionality
      */
     const XPlane: XPlaneAPI;
+
+    /**
+     * The SkyScript global object provides app management, filesystem access,
+     * path utilities, and app context information.
+     */
+    const SkyScript: SkyScriptAPI;
 }
 
 /**
@@ -695,6 +701,120 @@ interface HidAPI {
      * @returns `true` if successful
      */
     setNonBlocking(deviceId: number, nonBlocking: boolean): boolean;
+}
+
+// =============================================================================
+// SkyScript API Types
+// =============================================================================
+
+/**
+ * SkyScript API for app management, filesystem, path utilities, and app context.
+ * Available through the global `SkyScript` object.
+ */
+interface SkyScriptAPI {
+    /** List all installed SkyScript applications */
+    listApps(): string[];
+
+    /** Reload an app's view (refresh HTML/JS content) */
+    reloadApp(name: string): boolean;
+
+    /** Open/show an app's window */
+    openAppWindow(name: string): boolean;
+
+    /** Open the inspector/dev tools for an app */
+    openAppInspector(name: string): boolean;
+
+    /** Sandboxed filesystem access (paths relative to app directory) */
+    fs: SkyScriptFsAPI;
+
+    /** Cross-platform path utilities (pure string manipulation, no I/O) */
+    path: SkyScriptPathAPI;
+
+    /** Information about the current app */
+    app: SkyScriptAppInfo;
+}
+
+/**
+ * Filesystem API – sandboxed to the app directory.
+ * All paths are resolved relative to the app root.
+ * Attempts to escape via ".." are rejected.
+ */
+interface SkyScriptFsAPI {
+    /**
+     * Read a file as a UTF-8 string
+     * @param path - Relative path within the app directory
+     * @returns File contents, or `null` if not found / sandbox violation
+     */
+    readFile(path: string): string | null;
+
+    /**
+     * Write a string to a file (creates parent directories as needed)
+     * @param path - Relative path within the app directory
+     * @param content - String content to write
+     * @returns `true` if successful
+     */
+    writeFile(path: string, content: string): boolean;
+
+    /**
+     * Check if a file or directory exists
+     * @param path - Relative path within the app directory
+     * @returns `true` if the path exists
+     */
+    exists(path: string): boolean;
+}
+
+/**
+ * Cross-platform path utilities
+ */
+interface SkyScriptPathAPI {
+    /**
+     * Join path segments using the platform separator
+     * @param parts - Path segments to join
+     * @returns Normalised joined path
+     */
+    join(...parts: string[]): string;
+
+    /**
+     * Return the directory portion of a path
+     * @param path - The path to extract from
+     */
+    dirname(path: string): string;
+
+    /**
+     * Return the last segment of a path
+     * @param path - The path to extract from
+     * @param ext - Optional extension to strip
+     */
+    basename(path: string, ext?: string): string;
+
+    /**
+     * Return the extension of a path (including the dot)
+     * @param path - The path to extract from
+     */
+    extname(path: string): string;
+
+    /**
+     * Normalize a path, resolving '.' and '..' segments
+     * @param path - The path to normalize
+     */
+    normalize(path: string): string;
+
+    /** Platform-specific path separator ('/' on macOS/Linux, '\\' on Windows) */
+    sep: string;
+}
+
+/**
+ * Per-app context information, set automatically when the view is bound.
+ */
+interface SkyScriptAppInfo {
+    /** Internal app name (directory name) */
+    name: string;
+
+    /** Human-readable display name from manifest.json */
+    displayName: string;
+
+    /** Absolute path to the app's root directory */
+    dir: string;
 }
 
 export {};
