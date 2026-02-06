@@ -124,6 +124,8 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
     // Register draw callback to draw all app windows during 2D phase
     XPLMRegisterDrawCallback(drawCallback, xplm_Phase_Window, 0, nullptr);
 
+    Manager::instance().initializeAllApps();
+
     return 1;
 }
 
@@ -243,7 +245,7 @@ void Manager::discoverApps()
         // Create menu item for app_manager
         auto &stored_app = apps_["app_manager"];
         XPLMAppendMenuItem(menu_, stored_app->GetDisplayName().c_str(),
-                   (void *)stored_app->GetName().c_str(), 0);
+                           (void *)stored_app->GetName().c_str(), 0);
     }
 }
 

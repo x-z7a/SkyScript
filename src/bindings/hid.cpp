@@ -1,5 +1,9 @@
 #include "hid.h"
 
+#ifdef __APPLE__
+#include "../third_party/hidapi/hidapi_darwin.h"
+#endif
+
 // Static member definitions
 std::unordered_map<int, hid_device*> HidBindings::hid_device_cache_;
 int HidBindings::next_hid_device_id_ = 1;
@@ -32,6 +36,12 @@ void HidBindings::EnsureHidInitialized() {
         if (hid_init() == 0) {
             hid_initialized_ = true;
             LogMsg("JSBindings: HIDAPI initialized");
+#ifdef __APPLE__
+            // On macOS, HIDAPI defaults to exclusive open, which can block OS input.
+            // Disable exclusive mode so the device can still send standard HID events.
+            hid_darwin_set_open_exclusive(0);
+            LogMsg("JSBindings: HIDAPI set open exclusive = 0 (macOS)");
+#endif
         } else {
             LogMsg("JSBindings: HIDAPI initialization failed");
         }
