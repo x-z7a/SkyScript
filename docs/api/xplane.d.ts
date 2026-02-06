@@ -363,6 +363,7 @@ interface DataRefAPI {
  * SkyScript API for app management
  * 
  * Provides functions to list, reload, and manage SkyScript applications.
+ * Also provides filesystem access, path utilities, and app context info.
  * Available through the global `SkyScript` object.
  * 
  * @example
@@ -374,11 +375,14 @@ interface DataRefAPI {
  * // Open an app window
  * SkyScript.openAppWindow('hello-world');
  * 
- * // Open the inspector for debugging
- * SkyScript.openAppInspector('hello-world');
+ * // Read the current app's name
+ * console.log(SkyScript.app.name);
  * 
- * // Reload an app to refresh its content
- * SkyScript.reloadApp('hello-world');
+ * // Read a config file from the app directory
+ * const config = SkyScript.fs.readFile('config.json');
+ * 
+ * // Build a cross-platform path
+ * const p = SkyScript.path.join('data', 'settings.json');
  * ```
  */
 interface SkyScriptAPI {
@@ -386,12 +390,6 @@ interface SkyScriptAPI {
      * List all installed SkyScript applications
      * 
      * @returns Array of app names available in the system
-     * 
-     * @example
-     * ```typescript
-     * const apps = SkyScript.listApps();
-     * apps.forEach(app => console.log(`Found app: ${app}`));
-     * ```
      */
     listApps(): string[];
 
@@ -400,12 +398,6 @@ interface SkyScriptAPI {
      * 
      * @param name - The app name to reload
      * @returns `true` if successful, `false` if app not found or not initialized
-     * 
-     * @example
-     * ```typescript
-     * // Reload to pick up code changes
-     * SkyScript.reloadApp('my-app');
-     * ```
      */
     reloadApp(name: string): boolean;
 
@@ -414,30 +406,159 @@ interface SkyScriptAPI {
      * 
      * @param name - The app name to open
      * @returns `true` if successful, `false` if app not found
-     * 
-     * @example
-     * ```typescript
-     * SkyScript.openAppWindow('hello-world');
-     * ```
      */
     openAppWindow(name: string): boolean;
 
     /**
      * Open the inspector/dev tools for an app
      * 
-     * Opens a separate window with Safari/WebKit-style developer tools
-     * for debugging the app's HTML, CSS, JavaScript, and network activity.
-     * 
      * @param name - The app name to open inspector for
      * @returns `true` if successful, `false` if app not found
+     */
+    openAppInspector(name: string): boolean;
+
+    /**
+     * Filesystem access sandboxed to the current app's directory.
+     * All paths are relative to the app root; attempts to escape
+     * via ".." are rejected.
+     */
+    fs: SkyScriptFsAPI;
+
+    /**
+     * Cross-platform path utilities (pure string manipulation, no I/O).
+     */
+    path: SkyScriptPathAPI;
+
+    /**
+     * Information about the current app.
+     */
+    app: SkyScriptAppInfo;
+}
+
+/**
+ * Filesystem API – sandboxed to the app directory
+ */
+interface SkyScriptFsAPI {
+    /**
+     * Read a file as a UTF-8 string
+     * 
+     * @param path - Relative path within the app directory
+     * @returns File contents as a string, or `null` if the file doesn't exist or path escapes sandbox
      * 
      * @example
      * ```typescript
-     * // Open inspector to debug an app
-     * SkyScript.openAppInspector('my-app');
+     * const data = SkyScript.fs.readFile('data/config.json');
+     * if (data) {
+     *     const config = JSON.parse(data);
+     * }
      * ```
      */
-    openAppInspector(name: string): boolean;
+    readFile(path: string): string | null;
+
+    /**
+     * Write a string to a file (creates parent directories as needed)
+     * 
+     * @param path - Relative path within the app directory
+     * @param content - The string content to write
+     * @returns `true` if successful
+     * 
+     * @example
+     * ```typescript
+     * const saved = SkyScript.fs.writeFile('data/state.json', JSON.stringify(state));
+     * ```
+     */
+    writeFile(path: string, content: string): boolean;
+
+    /**
+     * Check if a file or directory exists
+     * 
+     * @param path - Relative path within the app directory
+     * @returns `true` if the path exists
+     */
+    exists(path: string): boolean;
+}
+
+/**
+ * Cross-platform path utilities
+ */
+interface SkyScriptPathAPI {
+    /**
+     * Join path segments using the platform separator
+     * 
+     * @param parts - Path segments to join
+     * @returns The joined, normalised path
+     * 
+     * @example
+     * ```typescript
+     * const p = SkyScript.path.join('data', 'users', 'config.json');
+     * // macOS/Linux: "data/users/config.json"
+     * // Windows:     "data\\users\\config.json"
+     * ```
+     */
+    join(...parts: string[]): string;
+
+    /**
+     * Return the directory portion of a path
+     * 
+     * @example
+     * ```typescript
+     * SkyScript.path.dirname('/foo/bar/baz.txt'); // "/foo/bar"
+     * ```
+     */
+    dirname(path: string): string;
+
+    /**
+     * Return the last segment of a path
+     * 
+     * @param path - The path to extract from
+     * @param ext  - Optional extension to strip
+     * 
+     * @example
+     * ```typescript
+     * SkyScript.path.basename('/foo/bar.txt');         // "bar.txt"
+     * SkyScript.path.basename('/foo/bar.txt', '.txt'); // "bar"
+     * ```
+     */
+    basename(path: string, ext?: string): string;
+
+    /**
+     * Return the extension of a path (including the dot)
+     * 
+     * @example
+     * ```typescript
+     * SkyScript.path.extname('config.json'); // ".json"
+     * ```
+     */
+    extname(path: string): string;
+
+    /**
+     * Normalize a path, resolving '.' and '..'
+     * 
+     * @example
+     * ```typescript
+     * SkyScript.path.normalize('data/../config/./file.txt'); // "config/file.txt"
+     * ```
+     */
+    normalize(path: string): string;
+
+    /**
+     * The platform-specific path separator ('/' on macOS/Linux, '\\' on Windows)
+     */
+    sep: string;
+}
+
+/**
+ * Per-app context information, set automatically when the view is bound.
+ */
+interface SkyScriptAppInfo {
+    /** Internal app name (directory name) */
+    name: string;
+
+    /** Human-readable display name from manifest.json */
+    displayName: string;
+
+    /** Absolute path to the app's root directory */
+    dir: string;
 }
 
 export {};

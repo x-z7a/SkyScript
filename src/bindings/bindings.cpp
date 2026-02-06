@@ -5,9 +5,14 @@
 #include "graphics.h"
 #include "skyscript.h"
 #include "hid.h"
+#include "fs.h"
+#include "path.h"
 #include "log_msg.h"
 
-void JSBindings::BindToView(RefPtr<View> view) {
+void JSBindings::BindToView(RefPtr<View> view,
+                           const std::string& app_name,
+                           const std::string& app_display_name,
+                           const std::string& app_dir) {
     RefPtr<JSContext> context = view->LockJSContext();
     SetJSContext(context->ctx());
     JSObject global = JSGlobalObject();
@@ -43,10 +48,28 @@ void JSBindings::BindToView(RefPtr<View> view) {
     // Attach XPlane to global
     global["XPlane"] = JSValue(static_cast<JSObjectRef>(xplane));
 
-    // SkyScript namespace (app management)
+    // SkyScript namespace (app management + fs + app info)
     JSObject skyscript;
     SkyScriptBindings::Bind(skyscript);
+
+    // SkyScript.fs – filesystem access sandboxed to this app's directory
+    JSObject fsObj;
+    FsBindings::Bind(fsObj, app_dir);
+    skyscript["fs"] = JSValue(static_cast<JSObjectRef>(fsObj));
+
+    // SkyScript.path – cross-platform path utilities
+    JSObject pathObj;
+    PathBindings::Bind(pathObj);
+    skyscript["path"] = JSValue(static_cast<JSObjectRef>(pathObj));
+
+    // SkyScript.app – per-app context info
+    JSObject appInfo;
+    appInfo["name"]        = JSValue(app_name.c_str());
+    appInfo["displayName"] = JSValue(app_display_name.c_str());
+    appInfo["dir"]         = JSValue(app_dir.c_str());
+    skyscript["app"] = JSValue(static_cast<JSObjectRef>(appInfo));
+
     global["SkyScript"] = JSValue(static_cast<JSObjectRef>(skyscript));
 
-    LogMsg("JSBindings: Bound XPlane API (dataref, scenery, instance, graphics, hid) and SkyScript API to view");
+    LogMsg("JSBindings: Bound XPlane API (dataref, scenery, instance, graphics, hid) and SkyScript API (fs, path, app) to view");
 }

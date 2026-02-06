@@ -225,7 +225,7 @@ function App() {
             className={`object-btn ${placedObject ? 'active' : ''}`}
             onClick={toggleObject}
           >
-            {placedObject ? '🔴 Remove Cone' : '🟠 Place Cone'}
+            {placedObject ? '🔴 Remove Truck' : '🟠 Place Truck'}
           </button>
           {objectStatus && <p className="object-status">{objectStatus}</p>}
         </div>
@@ -284,6 +284,21 @@ function App() {
             onChange={(e) => setMessage(e.target.value ? `You typed: ${e.target.value}` : '')}
           />
         </div>
+
+        {/* App Info */}
+        {typeof SkyScript !== 'undefined' && SkyScript.app && (
+          <div className="app-info">
+            <h3 className="app-info-title">📋 App Info</h3>
+            <div className="app-info-grid">
+              <span className="app-info-label">Name</span>
+              <span className="app-info-value">{SkyScript.app.name}</span>
+              <span className="app-info-label">Display Name</span>
+              <span className="app-info-value">{SkyScript.app.displayName}</span>
+              <span className="app-info-label">Directory</span>
+              <span className="app-info-value app-info-path">{SkyScript.app.dir}</span>
+            </div>
+          </div>
+        )}
 
         <div className="info-box">
           <p>✈️ This app is running inside X-Plane via SkyScript!</p>

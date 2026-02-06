@@ -978,7 +978,7 @@ void App::OnDOMReady(View *caller, uint64_t frame_id, bool is_main_frame, const 
     // Bind X-Plane API to JavaScript context now that the page is ready
     if (is_main_frame && main_view_) {
         LogMsg("[%s] Binding XPlane API to JavaScript context", app_name.c_str());
-        JSBindings::BindToView(main_view_);
+        JSBindings::BindToView(main_view_, app_name, app_display_name, app_dir);
     }
 }
 
