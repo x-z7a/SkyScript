@@ -1,17 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-// Declare global SkyScript API
-declare global {
-  interface SkyScriptAPI {
-    listApps(): string[];
-    reloadApp(name: string): boolean;
-    openAppWindow(name: string): boolean;
-    openAppInspector(name: string): boolean;
-  }
-  const SkyScript: SkyScriptAPI | undefined;
-}
-
 interface AppInfo {
   name: string;
   description: string;
