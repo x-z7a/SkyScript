@@ -56,6 +56,10 @@ interface XPlaneAPI {
      * HID API for USB Human Interface Device access
      */
     hid: HidAPI;
+    /**
+     * Utilities API for command management and miscellaneous helpers
+     */
+    utilities: UtilitiesAPI;
 }
 
 /**
@@ -701,6 +705,46 @@ interface HidAPI {
      * @returns `true` if successful
      */
     setNonBlocking(deviceId: number, nonBlocking: boolean): boolean;
+}
+
+/**
+ * Utilities API – command management and misc helpers
+ */
+interface UtilitiesAPI {
+    /**
+     * Find a command by persistent name. Returns an opaque numeric handle or `0`/`null` if not found.
+     */
+    findCommand(name: string): number | null;
+
+    /**
+     * Create a new command and return its handle.
+     */
+    createCommand(name: string, description: string): number;
+
+    /**
+     * Begin a command (must be balanced with `commandEnd`).
+     */
+    commandBegin(commandRef: number): void;
+
+    /**
+     * End a command previously begun.
+     */
+    commandEnd(commandRef: number): void;
+
+    /**
+     * Execute a command once (begin+end).
+     */
+    commandOnce(commandRef: number): void;
+
+    /**
+     * Register a JS handler for a command. The handler receives `(commandRef, phase, before)`
+     * and should return `1` to allow further processing or `0` to suppress.
+     * @param commandRef - Command handle returned by `findCommand`/`createCommand`
+     * @param handler - JS function invoked on command phases
+     * @param before - If true, handler runs before X-Plane and may suppress sim handling by returning 0
+     * @returns true on success
+     */
+    registerCommandHandler(commandRef: number, handler: (commandRef: number, phase: number, before: boolean) => number, before: boolean): boolean;
 }
 
 // =============================================================================

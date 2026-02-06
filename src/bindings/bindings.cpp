@@ -3,6 +3,7 @@
 #include "scenery.h"
 #include "instance.h"
 #include "graphics.h"
+#include "utilities.h"
 #include "skyscript.h"
 #include "hid.h"
 #include "fs.h"
@@ -44,6 +45,11 @@ void JSBindings::BindToView(RefPtr<View> view,
     JSObject hid;
     HidBindings::Bind(hid);
     xplane["hid"] = JSValue(static_cast<JSObjectRef>(hid));
+
+    // Utilities sub-namespace (commands, misc)
+    JSObject utilities;
+    UtilitiesBindings::Bind(utilities);
+    xplane["utilities"] = JSValue(static_cast<JSObjectRef>(utilities));
 
     // Attach XPlane to global
     global["XPlane"] = JSValue(static_cast<JSObjectRef>(xplane));

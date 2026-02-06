@@ -12,6 +12,7 @@ The SkyScript API provides JavaScript/TypeScript access to X-Plane SDK functiona
 | [`XPlane.graphics`](./GraphicsAPI) | Coordinate system conversions |
 | [`XPlane.hid`](./HidAPI) | USB HID device communication |
 | `SkyScript` | App management and debugging |
+| [`XPlane.utilities`](./UtilitiesAPI) | Command management and miscellaneous utilities |
 
 ## Quick Examples
 
