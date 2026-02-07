@@ -1,4 +1,6 @@
 #include "manager.h"
+#include "bindings/hid.h"
+#include "bindings/utilities.h"
 
 Manager &Manager::instance()
 {
@@ -23,13 +25,20 @@ Manager::~Manager()
 
 float update(float inElapsedSinceLastCall, float inElapsedTimeSinceLastFlightLoop, int inCounter, void *inRefcon)
 {
-    Manager::instance().renderer_->Update();
+    if (Manager::instance().renderer_)
+    {
+        Manager::instance().renderer_->Update();
+    }
     return -1.0f; // call me every frame for smooth rendering
 }
 
 // Draw callback - called during X-Plane's 2D drawing phase
 int drawCallback(XPLMDrawingPhase inPhase, int inIsBefore, void *inRefcon)
 {
+    if (!Manager::instance().renderer_)
+    {
+        return 1;
+    }
     Manager::instance().forceRepaintAllApps(); // Mark all visible views as needing paint
     Manager::instance().renderer_->Render();   // Render views to bitmaps
     Manager::instance().updateAllApps();       // Upload bitmaps to textures
@@ -143,7 +152,9 @@ void Manager::enable()
 
 void Manager::disable()
 {
-    LogMsg("Plugin disabled - destroying all apps");
+    LogMsg("Plugin disabled - unregistering handlers and destroying all apps");
+    UtilitiesBindings::Shutdown();
+    HidBindings::Shutdown();
     destroyAllApps();
 }
 
@@ -151,12 +162,16 @@ void Manager::stop()
 {
     LogMsg("Plugin stopping - cleaning up resources");
 
-    // Destroy all apps first
-    destroyAllApps();
-
     // Unregister callbacks
     XPLMUnregisterFlightLoopCallback(update, nullptr);
     XPLMUnregisterDrawCallback(drawCallback, xplm_Phase_Window, 0, nullptr);
+
+    // Release JS callback wrappers and HID handles while runtime is still alive.
+    UtilitiesBindings::Shutdown();
+    HidBindings::Shutdown();
+
+    // Destroy all apps after callbacks are gone.
+    destroyAllApps();
 
     // Release the renderer
     if (renderer_)

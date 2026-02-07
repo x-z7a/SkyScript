@@ -2,7 +2,7 @@
 #include "log_msg.h"
 #include <cassert>
 
-std::vector<UtilitiesBindings::CommandHandler> UtilitiesBindings::handlers_;
+std::vector<UtilitiesBindings::CommandHandler*> UtilitiesBindings::handlers_;
 std::mutex UtilitiesBindings::handlers_mutex_;
 
 void UtilitiesBindings::Bind(JSObject& utilities) {
@@ -77,11 +77,32 @@ JSValue UtilitiesBindings::JS_RegisterCommandHandler(const JSObject& thisObject,
     bool before = args[2].ToBoolean();
     // Ensure function uses the current main context
     fn.set_context(GetJSContext());
-    auto* handler = new CommandHandler{fn, before};
+    auto* handler = new CommandHandler{ref, fn, before};
     {
         std::lock_guard<std::mutex> lock(handlers_mutex_);
-        handlers_.push_back(*handler);
+        handlers_.push_back(handler);
     }
     XPLMRegisterCommandHandler(ref, CommandHandlerTrampoline, before ? 1 : 0, handler);
     return JSValue(true);
+}
+
+void UtilitiesBindings::Shutdown() {
+    std::vector<CommandHandler*> handlers_to_release;
+    {
+        std::lock_guard<std::mutex> lock(handlers_mutex_);
+        handlers_to_release.swap(handlers_);
+    }
+
+    for (CommandHandler* handler : handlers_to_release) {
+        if (!handler) {
+            continue;
+        }
+        if (handler->command_ref) {
+            XPLMUnregisterCommandHandler(handler->command_ref,
+                                         CommandHandlerTrampoline,
+                                         handler->before ? 1 : 0,
+                                         handler);
+        }
+        delete handler;
+    }
 }

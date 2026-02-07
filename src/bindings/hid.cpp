@@ -48,6 +48,22 @@ void HidBindings::EnsureHidInitialized() {
     }
 }
 
+void HidBindings::Shutdown() {
+    for (auto& [id, dev] : hid_device_cache_) {
+        if (dev) {
+            hid_close(dev);
+        }
+    }
+    hid_device_cache_.clear();
+    next_hid_device_id_ = 1;
+
+    if (hid_initialized_) {
+        hid_exit();
+        hid_initialized_ = false;
+        LogMsg("JSBindings: HIDAPI shutdown complete");
+    }
+}
+
 void HidBindings::Bind(JSObject& hid) {
     hid["enumerate"] = JSCallbackWithRetval(JS_HidEnumerate);
     hid["open"] = JSCallbackWithRetval(JS_HidOpen);

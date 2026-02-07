@@ -26,6 +26,11 @@ public:
      */
     static void Bind(JSObject& hid);
 
+    /**
+     * @brief Close open HID handles and deinitialize HIDAPI.
+     */
+    static void Shutdown();
+
 private:
     // HID device handle storage - maps device ID to handle
     static std::unordered_map<int, hid_device*> hid_device_cache_;

@@ -24,13 +24,21 @@ public:
      */
     static void Bind(JSObject& utilities);
 
+    /**
+     * @brief Unregister all command handlers and release JS callback references.
+     *
+     * Must be called before plugin unload while JS runtime is still valid.
+     */
+    static void Shutdown();
+
 private:
     // Command handler storage: maps refcon to JS callback
     struct CommandHandler {
+        XPLMCommandRef command_ref;
         ultralight::JSFunction jsFunction;
         bool before;
     };
-    static std::vector<CommandHandler> handlers_;
+    static std::vector<CommandHandler*> handlers_;
     static std::mutex handlers_mutex_;
 
     // Trampoline for XPLMCommandCallback_f
