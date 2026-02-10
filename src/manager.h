@@ -4,8 +4,15 @@
 #include <string>
 #include <memory>
 #include <filesystem>
-#include <future>
 #include <vector>
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <mutex>
+#include <thread>
+#include <unordered_map>
 
 #include "XPLMDataAccess.h"
 #include "XPLMScenery.h"
@@ -28,6 +35,12 @@ class Manager
 {
 
 public:
+    enum class UltralightTaskPriority : uint8_t
+    {
+        High,
+        Normal,
+    };
+
     static Manager &instance();
 
     RefPtr<Renderer> renderer_;
@@ -43,6 +56,12 @@ public:
     void drawAllApps();
     void forceRepaintAllApps();
     void stop();
+    void postToUltralightThread(std::function<void()> task,
+                                UltralightTaskPriority priority = UltralightTaskPriority::Normal);
+    void requestUltralightUpdate();
+    void requestUltralightRender();
+    bool isUltralightThread() const;
+    bool isRendererReady() const { return renderer_ready_.load(); }
 
     // Plugin info getters
     const char *getName() const { return name; }
@@ -77,6 +96,22 @@ private:
     XPLMMenuID menu_;
 
     std::unordered_map<std::string, std::unique_ptr<App>> apps_;
+    std::thread ultralight_thread_;
+    std::thread::id ultralight_thread_id_;
+    std::mutex ultralight_mutex_;
+    std::condition_variable ultralight_cv_;
+    std::deque<std::function<void()>> ultralight_high_priority_tasks_;
+    std::deque<std::function<void()>> ultralight_normal_priority_tasks_;
+    std::atomic<uint32_t> pending_updates_{0};
+    std::atomic<uint32_t> pending_renders_{0};
+    std::atomic<bool> renderer_ready_{false};
+    bool ultralight_thread_started_ = false;
+    bool ultralight_thread_exited_ = true;
+    bool ultralight_thread_stop_ = false;
+
+    void startUltralightThread();
+    void stopUltralightThread();
+    void ultralightThreadMain();
 
 private:
     Manager();

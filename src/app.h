@@ -1,6 +1,10 @@
 #pragma once
 
+#include <atomic>
+#include <cstdint>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include "log_msg.h"
 #include "bindings/bindings.h"
@@ -44,17 +48,18 @@ public:
     App(const App &) = delete;
     App &operator=(const App &) = delete;
 
-    void Initialize(RefPtr<Renderer> renderer);
+    void Initialize();
     void Destroy();        // Cleanup view and window resources
     void UpdateTexture();  // Update texture from Ultralight bitmap
     void Draw();
+    void ProcessPendingMainThreadWork();
     
     // Window visibility
     void Show();
     void Hide();
     void Toggle();
     bool IsVisible() const;
-    bool IsInitialized() const { return main_view_.get() != nullptr; }
+    bool IsInitialized() const { return main_view_ready_.load(); }
     
     // Reload the view (refresh HTML/JS)
     void Reload();
@@ -69,6 +74,7 @@ public:
     void CheckInspectorResize();
     void CreateInspectorWindow();
     int OnInspectorMouseClick(int x, int y, int button, int mouseStatus);
+    int OnInspectorMouseWheel(int clicks);
     int OnInspectorMouseMove(int x, int y);
     void OnInspectorKey(char key, XPLMKeyFlags flags, char virtualKey, int losingFocus);
     
@@ -78,9 +84,12 @@ public:
     
     // Force the view to repaint
     void ForceRepaint();
+    void ForceRepaintOnUltralightThread();
+    void CaptureSurfacesOnUltralightThread();
     
     // Mouse event handlers
     int OnMouseClick(int x, int y, int button, int mouseStatus);
+    int OnMouseWheel(int clicks);
     int OnMouseMove(int x, int y);
     void OnKey(char key, XPLMKeyFlags flags, char virtualKey, int losingFocus);
     void CheckResize();
@@ -96,6 +105,20 @@ public:
     virtual RefPtr<View> OnCreateInspectorView(View *caller, bool is_local, const String &inspected_url) override;
 
 private:
+    struct StagedSurface
+    {
+        std::mutex mutex;
+        std::vector<uint8_t> pixels;
+        int width = 0;
+        int height = 0;
+        bool has_new_frame = false;
+    };
+
+    void CaptureSurface(const RefPtr<View>& view, StagedSurface& staged_surface);
+    void UploadStagedSurface(StagedSurface& staged_surface, GLuint& texture_id, int& texture_width, int& texture_height);
+    void InitializeUltralightOnThread();
+    void DestroyUltralightOnThread();
+
     std::string app_name;
     std::string app_display_name;
     std::string app_dir;
@@ -106,7 +129,10 @@ private:
     GLuint texture_id_ = 0;
     int view_width_ = 800;
     int view_height_ = 600;
-    bool texture_needs_init_ = true;
+    int texture_width_ = 0;
+    int texture_height_ = 0;
+    std::atomic<bool> main_view_ready_{false};
+    StagedSurface main_staged_surface_;
     
     // Inspector support
     RefPtr<View> inspector_view_;
@@ -114,5 +140,10 @@ private:
     GLuint inspector_texture_id_ = 0;
     int inspector_width_ = 800;
     int inspector_height_ = 600;
-    bool inspector_pending_ = false;  // Track if inspector was requested
+    int inspector_texture_width_ = 0;
+    int inspector_texture_height_ = 0;
+    std::atomic<bool> inspector_pending_{false};
+    std::atomic<bool> inspector_view_ready_{false};
+    std::atomic<bool> inspector_window_requested_{false};
+    StagedSurface inspector_staged_surface_;
 };

@@ -1,4 +1,5 @@
 #include "graphics.h"
+#include "xplm_dispatch.h"
 
 void GraphicsBindings::Bind(JSObject& graphics) {
     graphics["localToWorld"] = JSCallbackWithRetval(JS_LocalToWorld);
@@ -16,7 +17,7 @@ JSValue GraphicsBindings::JS_LocalToWorld(const JSObject& thisObject, const JSAr
     double z = args[2].ToNumber();
     
     double latitude, longitude, altitude;
-    XPLMLocalToWorld(x, y, z, &latitude, &longitude, &altitude);
+    CallOnMainThread([&] { XPLMLocalToWorld(x, y, z, &latitude, &longitude, &altitude); });
     
     JSObject result;
     result["latitude"] = JSValue(latitude);
@@ -37,7 +38,7 @@ JSValue GraphicsBindings::JS_WorldToLocal(const JSObject& thisObject, const JSAr
     double altitude = args[2].ToNumber();
     
     double x, y, z;
-    XPLMWorldToLocal(latitude, longitude, altitude, &x, &y, &z);
+    CallOnMainThread([&] { XPLMWorldToLocal(latitude, longitude, altitude, &x, &y, &z); });
     
     JSObject result;
     result["x"] = JSValue(x);

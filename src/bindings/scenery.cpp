@@ -1,4 +1,5 @@
 #include "scenery.h"
+#include "xplm_dispatch.h"
 
 // Static member definitions
 std::unordered_map<std::string, XPLMObjectRef> SceneryBindings::object_cache_;
@@ -45,7 +46,7 @@ JSValue SceneryBindings::JS_LoadObject(const JSObject& thisObject, const JSArgs&
     }
     
     // Load the object
-    XPLMObjectRef obj = XPLMLoadObject(path_str.c_str());
+    XPLMObjectRef obj = CallOnMainThread([&] { return XPLMLoadObject(path_str.c_str()); });
     if (!obj) {
         LogMsg("JSBindings: failed to load object: %s", path_str.c_str());
         return JSValue();
@@ -77,7 +78,7 @@ JSValue SceneryBindings::JS_UnloadObject(const JSObject& thisObject, const JSArg
         return JSValue(false);
     }
     
-    XPLMUnloadObject(it->second);
+    CallOnMainThread([&] { XPLMUnloadObject(it->second); });
     object_cache_.erase(it);
     
     LogMsg("JSBindings: unloaded object: %s", path_str.c_str());
@@ -94,7 +95,7 @@ JSValue SceneryBindings::JS_CreateProbe(const JSObject& thisObject, const JSArgs
         probeType = static_cast<int>(args[0].ToNumber());
     }
     
-    XPLMProbeRef probe = XPLMCreateProbe(static_cast<XPLMProbeType>(probeType));
+    XPLMProbeRef probe = CallOnMainThread([&] { return XPLMCreateProbe(static_cast<XPLMProbeType>(probeType)); });
     if (!probe) {
         LogMsg("JSBindings: failed to create terrain probe");
         return JSValue();
@@ -121,7 +122,7 @@ JSValue SceneryBindings::JS_DestroyProbe(const JSObject& thisObject, const JSArg
         return JSValue(false);
     }
     
-    XPLMDestroyProbe(it->second);
+    CallOnMainThread([&] { XPLMDestroyProbe(it->second); });
     probe_cache_.erase(it);
     
     LogMsg("JSBindings: destroyed probe %d", id);
@@ -149,8 +150,12 @@ JSValue SceneryBindings::JS_ProbeTerrainXYZ(const JSObject& thisObject, const JS
     XPLMProbeInfo_t info;
     info.structSize = sizeof(XPLMProbeInfo_t);
     
-    XPLMProbeResult result = XPLMProbeTerrainXYZ(it->second, 
-        static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), &info);
+    XPLMProbeResult result = CallOnMainThread([&]
+                                              { return XPLMProbeTerrainXYZ(it->second,
+                                                                           static_cast<float>(x),
+                                                                           static_cast<float>(y),
+                                                                           static_cast<float>(z),
+                                                                           &info); });
     
     if (result != xplm_ProbeHitTerrain) {
         JSObject errorResult;
@@ -188,7 +193,7 @@ JSValue SceneryBindings::JS_GetMagneticVariation(const JSObject& thisObject, con
     double latitude = args[0].ToNumber();
     double longitude = args[1].ToNumber();
     
-    float variation = XPLMGetMagneticVariation(latitude, longitude);
+    float variation = CallOnMainThread([&] { return XPLMGetMagneticVariation(latitude, longitude); });
     return JSValue(static_cast<double>(variation));
 }
 
@@ -199,7 +204,7 @@ JSValue SceneryBindings::JS_DegTrueToDegMagnetic(const JSObject& thisObject, con
     }
     
     float headingTrue = static_cast<float>(args[0].ToNumber());
-    float headingMag = XPLMDegTrueToDegMagnetic(headingTrue);
+    float headingMag = CallOnMainThread([&] { return XPLMDegTrueToDegMagnetic(headingTrue); });
     return JSValue(static_cast<double>(headingMag));
 }
 
@@ -210,6 +215,6 @@ JSValue SceneryBindings::JS_DegMagneticToDegTrue(const JSObject& thisObject, con
     }
     
     float headingMag = static_cast<float>(args[0].ToNumber());
-    float headingTrue = XPLMDegMagneticToDegTrue(headingMag);
+    float headingTrue = CallOnMainThread([&] { return XPLMDegMagneticToDegTrue(headingMag); });
     return JSValue(static_cast<double>(headingTrue));
 }

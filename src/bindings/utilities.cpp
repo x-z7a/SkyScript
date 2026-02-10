@@ -1,5 +1,7 @@
 #include "utilities.h"
 #include "log_msg.h"
+#include "xplm_dispatch.h"
+#include "../manager.h"
 #include <cassert>
 
 std::vector<UtilitiesBindings::CommandHandler*> UtilitiesBindings::handlers_;
@@ -18,28 +20,28 @@ JSValue UtilitiesBindings::JS_FindCommand(const JSObject& thisObject, const JSAr
     if (args.empty() || !args[0].IsString()) return JSValue();
     String name = args[0].ToString();
     std::string name_str = name.utf8().data();
-    XPLMCommandRef ref = XPLMFindCommand(name_str.c_str());
+    XPLMCommandRef ref = CallOnMainThread([&] { return XPLMFindCommand(name_str.c_str()); });
     return JSValue((double)(uintptr_t)ref);
 }
 
 JSValue UtilitiesBindings::JS_CommandBegin(const JSObject& thisObject, const JSArgs& args) {
     if (args.empty() || !args[0].IsNumber()) return JSValue();
     XPLMCommandRef ref = (XPLMCommandRef)(uintptr_t)args[0].ToNumber();
-    XPLMCommandBegin(ref);
+    CallOnMainThread([&] { XPLMCommandBegin(ref); });
     return JSValue();
 }
 
 JSValue UtilitiesBindings::JS_CommandEnd(const JSObject& thisObject, const JSArgs& args) {
     if (args.empty() || !args[0].IsNumber()) return JSValue();
     XPLMCommandRef ref = (XPLMCommandRef)(uintptr_t)args[0].ToNumber();
-    XPLMCommandEnd(ref);
+    CallOnMainThread([&] { XPLMCommandEnd(ref); });
     return JSValue();
 }
 
 JSValue UtilitiesBindings::JS_CommandOnce(const JSObject& thisObject, const JSArgs& args) {
     if (args.empty() || !args[0].IsNumber()) return JSValue();
     XPLMCommandRef ref = (XPLMCommandRef)(uintptr_t)args[0].ToNumber();
-    XPLMCommandOnce(ref);
+    CallOnMainThread([&] { XPLMCommandOnce(ref); });
     return JSValue();
 }
 
@@ -49,24 +51,33 @@ JSValue UtilitiesBindings::JS_CreateCommand(const JSObject& thisObject, const JS
     String desc = args[1].ToString();
     std::string name_str = name.utf8().data();
     std::string desc_str = desc.utf8().data();
-    XPLMCommandRef ref = XPLMCreateCommand(name_str.c_str(), desc_str.c_str());
+    XPLMCommandRef ref = CallOnMainThread([&] { return XPLMCreateCommand(name_str.c_str(), desc_str.c_str()); });
     return JSValue((double)(uintptr_t)ref);
 }
 
 int UtilitiesBindings::CommandHandlerTrampoline(XPLMCommandRef inCommand, XPLMCommandPhase inPhase, void* inRefcon) {
     auto* handler = reinterpret_cast<CommandHandler*>(inRefcon);
     if (!handler) return 1;
-    // Build JSArgs and call the stored JSFunction using Ultralight helpers
-    JSArgs jsArgs;
-    jsArgs.push_back(JSValue((double)(uintptr_t)inCommand));
-    jsArgs.push_back(JSValue((int)inPhase));
-    jsArgs.push_back(JSValue(handler->before ? true : false));
-    try {
-        JSValue result = handler->jsFunction(jsArgs);
-        if (result.IsNumber()) return static_cast<int>(result.ToNumber());
-    } catch (...) {
-        return 1;
-    }
+
+    JSFunction callback = handler->jsFunction;
+    const bool before = handler->before;
+
+    Manager::instance().postToUltralightThread([callback, inCommand, inPhase, before]() mutable
+                                               {
+        JSArgs jsArgs;
+        jsArgs.push_back(JSValue((double)(uintptr_t)inCommand));
+        jsArgs.push_back(JSValue((int)inPhase));
+        jsArgs.push_back(JSValue(before));
+
+        try
+        {
+            callback(jsArgs);
+        }
+        catch (...)
+        {
+        } },
+                                               Manager::UltralightTaskPriority::High);
+
     return 1;
 }
 
@@ -82,7 +93,7 @@ JSValue UtilitiesBindings::JS_RegisterCommandHandler(const JSObject& thisObject,
         std::lock_guard<std::mutex> lock(handlers_mutex_);
         handlers_.push_back(handler);
     }
-    XPLMRegisterCommandHandler(ref, CommandHandlerTrampoline, before ? 1 : 0, handler);
+    CallOnMainThread([&] { XPLMRegisterCommandHandler(ref, CommandHandlerTrampoline, before ? 1 : 0, handler); });
     return JSValue(true);
 }
 
@@ -98,10 +109,11 @@ void UtilitiesBindings::Shutdown() {
             continue;
         }
         if (handler->command_ref) {
-            XPLMUnregisterCommandHandler(handler->command_ref,
-                                         CommandHandlerTrampoline,
-                                         handler->before ? 1 : 0,
-                                         handler);
+            CallOnMainThread([&]
+                             { XPLMUnregisterCommandHandler(handler->command_ref,
+                                                            CommandHandlerTrampoline,
+                                                            handler->before ? 1 : 0,
+                                                            handler); });
         }
         delete handler;
     }

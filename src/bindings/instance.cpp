@@ -1,5 +1,6 @@
 #include "instance.h"
 #include "scenery.h"
+#include "xplm_dispatch.h"
 
 // Static member definitions
 std::unordered_map<int, XPLMInstanceRef> InstanceBindings::instance_cache_;
@@ -53,7 +54,7 @@ JSValue InstanceBindings::JS_CreateInstance(const JSObject& thisObject, const JS
         datarefs.push_back(nullptr);
     }
     
-    XPLMInstanceRef instance = XPLMCreateInstance(obj, datarefs.data());
+    XPLMInstanceRef instance = CallOnMainThread([&] { return XPLMCreateInstance(obj, datarefs.data()); });
     if (!instance) {
         LogMsg("JSBindings: failed to create instance of: %s", path_str.c_str());
         return JSValue();
@@ -80,7 +81,7 @@ JSValue InstanceBindings::JS_DestroyInstance(const JSObject& thisObject, const J
         return JSValue(false);
     }
     
-    XPLMDestroyInstance(it->second);
+    CallOnMainThread([&] { XPLMDestroyInstance(it->second); });
     instance_cache_.erase(it);
     
     LogMsg("JSBindings: destroyed instance %d", id);
@@ -123,6 +124,6 @@ JSValue InstanceBindings::JS_InstanceSetPosition(const JSObject& thisObject, con
         }
     }
     
-    XPLMInstanceSetPosition(it->second, &drawInfo, data.empty() ? nullptr : data.data());
+    CallOnMainThread([&] { XPLMInstanceSetPosition(it->second, &drawInfo, data.empty() ? nullptr : data.data()); });
     return JSValue(true);
 }

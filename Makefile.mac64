@@ -104,4 +104,5 @@ $(DEPFILES):
 include $(wildcard $(DEPFILES))
 
 clean:
-	rm -f $(TARGET) $(OBJDIR)/*.o_* $(OBJDIR)/*.xpl_*
+	rm -f $(TARGET) $(TARGET_arm) $(TARGET_x86)
+	@if [ -d "$(OBJDIR)" ]; then find "$(OBJDIR)" -type f \( -name '*.o_arm' -o -name '*.o_x86' -o -name '*.xpl_arm' -o -name '*.xpl_x86' \) -delete; fi

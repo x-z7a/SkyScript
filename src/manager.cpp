@@ -1,6 +1,36 @@
 #include "manager.h"
 #include "bindings/hid.h"
 #include "bindings/utilities.h"
+#include "main_thread_dispatcher.h"
+
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <limits>
+#include <thread>
+#include <utility>
+
+namespace {
+
+uint32_t ResolveUltralightRendererThreads()
+{
+    // Optional override for tuning: 0 lets Ultralight choose automatically.
+    if (const char *env = std::getenv("SKYSCRIPT_UL_NUM_RENDERER_THREADS"))
+    {
+        const unsigned long parsed = std::strtoul(env, nullptr, 10);
+        return static_cast<uint32_t>(std::min<unsigned long>(parsed, std::numeric_limits<uint32_t>::max()));
+    }
+
+    // Keep one core free for the sim/main thread.
+    const unsigned int cores = std::thread::hardware_concurrency();
+    if (cores <= 1)
+    {
+        return 1;
+    }
+    return static_cast<uint32_t>(cores - 1);
+}
+
+} // namespace
 
 Manager &Manager::instance()
 {
@@ -25,9 +55,11 @@ Manager::~Manager()
 
 float update(float inElapsedSinceLastCall, float inElapsedTimeSinceLastFlightLoop, int inCounter, void *inRefcon)
 {
-    if (Manager::instance().renderer_)
+    MainThreadDispatcher::instance().Drain(16, 128);
+
+    if (Manager::instance().isRendererReady())
     {
-        Manager::instance().renderer_->Update();
+        Manager::instance().requestUltralightUpdate();
     }
     return -1.0f; // call me every frame for smooth rendering
 }
@@ -35,19 +67,221 @@ float update(float inElapsedSinceLastCall, float inElapsedTimeSinceLastFlightLoo
 // Draw callback - called during X-Plane's 2D drawing phase
 int drawCallback(XPLMDrawingPhase inPhase, int inIsBefore, void *inRefcon)
 {
-    if (!Manager::instance().renderer_)
+    MainThreadDispatcher::instance().Drain(48, 512);
+
+    if (!Manager::instance().isRendererReady())
     {
         return 1;
     }
-    Manager::instance().forceRepaintAllApps(); // Mark all visible views as needing paint
-    Manager::instance().renderer_->Render();   // Render views to bitmaps
-    Manager::instance().updateAllApps();       // Upload bitmaps to textures
-    Manager::instance().drawAllApps();         // Draw textured quads
+    Manager::instance().requestUltralightRender(); // Render views asynchronously on Ultralight thread
+    Manager::instance().updateAllApps();           // Upload staged bitmaps to textures
+    Manager::instance().drawAllApps();             // Draw textured quads
     return 1;
+}
+
+bool Manager::isUltralightThread() const
+{
+    return std::this_thread::get_id() == ultralight_thread_id_;
+}
+
+void Manager::postToUltralightThread(std::function<void()> task, UltralightTaskPriority priority)
+{
+    if (!task)
+    {
+        return;
+    }
+    if (isUltralightThread())
+    {
+        task();
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(ultralight_mutex_);
+        if (priority == UltralightTaskPriority::High)
+        {
+            ultralight_high_priority_tasks_.push_back(std::move(task));
+        }
+        else
+        {
+            ultralight_normal_priority_tasks_.push_back(std::move(task));
+        }
+    }
+    ultralight_cv_.notify_one();
+}
+
+void Manager::requestUltralightUpdate()
+{
+    if (!isRendererReady())
+    {
+        return;
+    }
+    pending_updates_.fetch_add(1, std::memory_order_relaxed);
+    ultralight_cv_.notify_one();
+}
+
+void Manager::requestUltralightRender()
+{
+    if (!isRendererReady())
+    {
+        return;
+    }
+    pending_renders_.fetch_add(1, std::memory_order_relaxed);
+    ultralight_cv_.notify_one();
+}
+
+void Manager::startUltralightThread()
+{
+    {
+        std::lock_guard<std::mutex> lock(ultralight_mutex_);
+        ultralight_thread_stop_ = false;
+        ultralight_thread_started_ = false;
+        ultralight_thread_exited_ = false;
+        ultralight_high_priority_tasks_.clear();
+        ultralight_normal_priority_tasks_.clear();
+    }
+    pending_updates_.store(0);
+    pending_renders_.store(0);
+    renderer_ready_.store(false);
+
+    ultralight_thread_ = std::thread(&Manager::ultralightThreadMain, this);
+
+    std::unique_lock<std::mutex> lock(ultralight_mutex_);
+    ultralight_cv_.wait(lock, [this]
+                        { return ultralight_thread_started_; });
+}
+
+void Manager::stopUltralightThread()
+{
+    if (!ultralight_thread_.joinable())
+    {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(ultralight_mutex_);
+        ultralight_thread_stop_ = true;
+        ultralight_high_priority_tasks_.clear();
+        ultralight_normal_priority_tasks_.clear();
+    }
+    pending_updates_.store(0, std::memory_order_relaxed);
+    pending_renders_.store(0, std::memory_order_relaxed);
+    ultralight_cv_.notify_one();
+
+    while (true)
+    {
+        {
+            std::unique_lock<std::mutex> lock(ultralight_mutex_);
+            if (ultralight_cv_.wait_for(lock, std::chrono::milliseconds(2), [this]
+                                        { return ultralight_thread_exited_; }))
+            {
+                break;
+            }
+        }
+        MainThreadDispatcher::instance().Drain(64, 1024);
+    }
+
+    ultralight_thread_.join();
+    ultralight_thread_id_ = std::thread::id();
+}
+
+void Manager::ultralightThreadMain()
+{
+    ultralight_thread_id_ = std::this_thread::get_id();
+
+    renderer_ = Renderer::Create();
+    renderer_ready_.store(renderer_.get() != nullptr);
+
+    {
+        std::lock_guard<std::mutex> lock(ultralight_mutex_);
+        ultralight_thread_started_ = true;
+    }
+    ultralight_cv_.notify_all();
+
+    while (true)
+    {
+        std::deque<std::function<void()>> high_priority_tasks;
+        std::deque<std::function<void()>> normal_priority_tasks;
+        uint32_t update_count = 0;
+        uint32_t render_count = 0;
+
+        {
+            std::unique_lock<std::mutex> lock(ultralight_mutex_);
+            ultralight_cv_.wait(lock, [this]
+                                { return ultralight_thread_stop_ ||
+                                         !ultralight_high_priority_tasks_.empty() ||
+                                         !ultralight_normal_priority_tasks_.empty() ||
+                                         pending_updates_.load(std::memory_order_relaxed) > 0 ||
+                                         pending_renders_.load(std::memory_order_relaxed) > 0; });
+
+            high_priority_tasks.swap(ultralight_high_priority_tasks_);
+            normal_priority_tasks.swap(ultralight_normal_priority_tasks_);
+            update_count = pending_updates_.exchange(0, std::memory_order_relaxed);
+            render_count = pending_renders_.exchange(0, std::memory_order_relaxed);
+
+            if (ultralight_thread_stop_ && high_priority_tasks.empty() && normal_priority_tasks.empty() &&
+                update_count == 0 && render_count == 0)
+            {
+                break;
+            }
+        }
+
+        for (auto &task : high_priority_tasks)
+        {
+            task();
+        }
+
+        for (auto &task : normal_priority_tasks)
+        {
+            task();
+        }
+
+        if (!renderer_)
+        {
+            continue;
+        }
+
+        if (update_count > 0)
+        {
+            renderer_->Update();
+        }
+
+        if (render_count > 0)
+        {
+            for (auto &[name, app] : apps_)
+            {
+                if (app)
+                {
+                    app->ForceRepaintOnUltralightThread();
+                }
+            }
+
+            renderer_->Render();
+
+            for (auto &[name, app] : apps_)
+            {
+                if (app)
+                {
+                    app->CaptureSurfacesOnUltralightThread();
+                }
+            }
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(ultralight_mutex_);
+        ultralight_thread_started_ = false;
+        ultralight_thread_exited_ = true;
+    }
+    ultralight_cv_.notify_all();
+
+    renderer_ = nullptr;
+    renderer_ready_.store(false);
 }
 
 PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void *params)
 {
+    MainThreadDispatcher::instance().Drain(24, 256);
+
     switch (msg)
     {
     case XPLM_MSG_PLANE_LOADED:
@@ -80,6 +314,7 @@ PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void *params)
 int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
 {
     LogMsg("Startup " VERSION);
+    MainThreadDispatcher::instance().SetMainThread();
 
     // Initialization code here
     strcpy(out_name, name);
@@ -120,14 +355,19 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
     Config config;
     // config.user_stylesheet = "body { background-color: #202020; color: #E0E0E0; }";
     config.cache_path = (output_dir + "/cache").c_str(); // For persistent sessions
+    config.num_renderer_threads = ResolveUltralightRendererThreads();
+
+    LogMsg("Ultralight renderer threads: %u (set SKYSCRIPT_UL_NUM_RENDERER_THREADS to override, 0=auto)",
+           config.num_renderer_threads);
+
     Platform::instance().set_config(config);
     Platform::instance().set_font_loader(GetPlatformFontLoader());
     Platform::instance().set_file_system(GetPlatformFileSystem(plugin_dir.c_str()));
     Platform::instance().set_logger(GetDefaultLogger("ultralight.log"));
 
-    renderer_ = Renderer::Create();
+    startUltralightThread();
 
-    // register XP draw callbacks to call renderer_->Update() and renderer_->Render()
+    // Register XP callbacks that enqueue update/render work on the Ultralight thread.
     XPLMRegisterFlightLoopCallback(update, 0.1, nullptr);
 
     // Register draw callback to draw all app windows during 2D phase
@@ -143,7 +383,7 @@ void Manager::enable()
     LogMsg("Plugin enabled");
 
     // Re-initialize apps if renderer exists (plugin was re-enabled after disable)
-    if (renderer_)
+    if (isRendererReady())
     {
         LogMsg("Re-initializing apps after plugin re-enable");
         initializeAllApps();
@@ -161,6 +401,7 @@ void Manager::disable()
 void Manager::stop()
 {
     LogMsg("Plugin stopping - cleaning up resources");
+    MainThreadDispatcher::instance().DrainAll();
 
     // Unregister callbacks
     XPLMUnregisterFlightLoopCallback(update, nullptr);
@@ -173,18 +414,17 @@ void Manager::stop()
     // Destroy all apps after callbacks are gone.
     destroyAllApps();
 
-    // Release the renderer
-    if (renderer_)
-    {
-        LogMsg("Releasing Ultralight renderer");
-        renderer_ = nullptr;
-    }
+    LogMsg("Stopping Ultralight thread");
+    stopUltralightThread();
+    MainThreadDispatcher::instance().DrainAll();
 
     LogMsg("Plugin stopped");
 }
 
 void Manager::menuCB(void *menu_ref, void *item_ref)
 {
+    MainThreadDispatcher::instance().Drain(24, 256);
+
     const char *item_name = static_cast<const char *>(item_ref);
     if (item_name == nullptr)
     {
@@ -272,7 +512,7 @@ void Manager::initializeAllApps()
         if (app)
         {
             LogMsg("Initializing app: %s", name.c_str());
-            app->Initialize(renderer_);
+            app->Initialize();
         }
     }
 }
@@ -282,6 +522,10 @@ void Manager::updateAllApps()
     // Update textures for all visible apps
     for (auto &[name, app] : apps_)
     {
+        if (app)
+        {
+            app->ProcessPendingMainThreadWork();
+        }
         if (app && app->IsVisible())
         {
             app->UpdateTexture();
@@ -328,7 +572,7 @@ void Manager::destroyAllApps()
     LogMsg("Destroying all apps");
     for (auto &[name, app] : apps_)
     {
-        if (app && app->IsInitialized())
+        if (app)
         {
             LogMsg("Destroying app: %s", name.c_str());
             app->Destroy();
@@ -370,18 +614,15 @@ bool Manager::openAppWindow(const std::string &name)
     if (it != apps_.end() && it->second)
     {
         // Initialize if not already done
-        if (!it->second->IsInitialized() && renderer_)
+        if (!it->second->IsInitialized())
         {
             LogMsg("Initializing app on demand: %s", name.c_str());
-            it->second->Initialize(renderer_);
+            it->second->Initialize();
         }
 
-        if (it->second->IsInitialized())
-        {
-            LogMsg("Opening app window: %s", name.c_str());
-            it->second->Show();
-            return true;
-        }
+        LogMsg("Opening app window: %s", name.c_str());
+        it->second->Show();
+        return true;
     }
     LogMsg("Failed to open app window (not found or not initialized): %s", name.c_str());
     return false;
@@ -393,18 +634,15 @@ bool Manager::openAppInspector(const std::string &name)
     if (it != apps_.end() && it->second)
     {
         // Initialize if not already done
-        if (!it->second->IsInitialized() && renderer_)
+        if (!it->second->IsInitialized())
         {
             LogMsg("Initializing app on demand: %s", name.c_str());
-            it->second->Initialize(renderer_);
+            it->second->Initialize();
         }
 
-        if (it->second->IsInitialized())
-        {
-            LogMsg("Opening inspector for app: %s", name.c_str());
-            it->second->ShowInspector();
-            return true;
-        }
+        LogMsg("Opening inspector for app: %s", name.c_str());
+        it->second->ShowInspector();
+        return true;
     }
     LogMsg("Failed to open app inspector (not found or not initialized): %s", name.c_str());
     return false;

@@ -1,5 +1,6 @@
 #include "skyscript.h"
 #include "../manager.h"
+#include "xplm_dispatch.h"
 
 void SkyScriptBindings::Bind(JSObject& skyscript) {
     skyscript["listApps"] = JSCallbackWithRetval(JS_ListApps);
@@ -9,7 +10,7 @@ void SkyScriptBindings::Bind(JSObject& skyscript) {
 }
 
 JSValue SkyScriptBindings::JS_ListApps(const JSObject& thisObject, const JSArgs& args) {
-    auto names = Manager::instance().getAppNames();
+    auto names = CallOnMainThread([&] { return Manager::instance().getAppNames(); });
     
     JSArray result;
     for (size_t i = 0; i < names.size(); i++) {
@@ -28,7 +29,7 @@ JSValue SkyScriptBindings::JS_ReloadApp(const JSObject& thisObject, const JSArgs
     String name = args[0].ToString();
     std::string name_str = name.utf8().data();
     
-    return JSValue(Manager::instance().reloadApp(name_str));
+    return JSValue(CallOnMainThread([&] { return Manager::instance().reloadApp(name_str); }));
 }
 
 JSValue SkyScriptBindings::JS_OpenAppWindow(const JSObject& thisObject, const JSArgs& args) {
@@ -40,7 +41,7 @@ JSValue SkyScriptBindings::JS_OpenAppWindow(const JSObject& thisObject, const JS
     String name = args[0].ToString();
     std::string name_str = name.utf8().data();
     
-    return JSValue(Manager::instance().openAppWindow(name_str));
+    return JSValue(CallOnMainThread([&] { return Manager::instance().openAppWindow(name_str); }));
 }
 
 JSValue SkyScriptBindings::JS_OpenAppInspector(const JSObject& thisObject, const JSArgs& args) {
@@ -52,5 +53,5 @@ JSValue SkyScriptBindings::JS_OpenAppInspector(const JSObject& thisObject, const
     String name = args[0].ToString();
     std::string name_str = name.utf8().data();
     
-    return JSValue(Manager::instance().openAppInspector(name_str));
+    return JSValue(CallOnMainThread([&] { return Manager::instance().openAppInspector(name_str); }));
 }

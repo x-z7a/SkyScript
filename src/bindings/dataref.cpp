@@ -1,4 +1,5 @@
 #include "dataref.h"
+#include "xplm_dispatch.h"
 
 // Static member definitions
 std::unordered_map<std::string, XPLMDataRef> DataRefBindings::dataref_cache_;
@@ -12,7 +13,7 @@ XPLMDataRef DataRefBindings::GetCachedDataRef(const std::string& name) {
         return it->second;
     }
     
-    XPLMDataRef ref = XPLMFindDataRef(name.c_str());
+    XPLMDataRef ref = CallOnMainThread([&] { return XPLMFindDataRef(name.c_str()); });
     if (ref) {
         dataref_cache_[name] = ref;
     }
@@ -76,7 +77,7 @@ JSValue DataRefBindings::JS_CanWriteDataRef(const JSObject& thisObject, const JS
         return JSValue(false);
     }
     
-    return JSValue(XPLMCanWriteDataRef(ref) != 0);
+    return JSValue(CallOnMainThread([&] { return XPLMCanWriteDataRef(ref) != 0; }));
 }
 
 JSValue DataRefBindings::JS_GetDataRefTypes(const JSObject& thisObject, const JSArgs& args) {
@@ -93,7 +94,7 @@ JSValue DataRefBindings::JS_GetDataRefTypes(const JSObject& thisObject, const JS
         return JSValue();
     }
     
-    XPLMDataTypeID types = XPLMGetDataRefTypes(ref);
+    XPLMDataTypeID types = CallOnMainThread([&] { return XPLMGetDataRefTypes(ref); });
     
     JSObject result;
     result["int"] = JSValue((types & xplmType_Int) != 0);
@@ -125,7 +126,7 @@ JSValue DataRefBindings::JS_GetDatai(const JSObject& thisObject, const JSArgs& a
         return JSValue(0);
     }
     
-    return JSValue(XPLMGetDatai(ref));
+    return JSValue(CallOnMainThread([&] { return XPLMGetDatai(ref); }));
 }
 
 JSValue DataRefBindings::JS_GetDataf(const JSObject& thisObject, const JSArgs& args) {
@@ -143,7 +144,7 @@ JSValue DataRefBindings::JS_GetDataf(const JSObject& thisObject, const JSArgs& a
         return JSValue(0.0);
     }
     
-    return JSValue(static_cast<double>(XPLMGetDataf(ref)));
+    return JSValue(static_cast<double>(CallOnMainThread([&] { return XPLMGetDataf(ref); })));
 }
 
 JSValue DataRefBindings::JS_GetDatad(const JSObject& thisObject, const JSArgs& args) {
@@ -161,7 +162,7 @@ JSValue DataRefBindings::JS_GetDatad(const JSObject& thisObject, const JSArgs& a
         return JSValue(0.0);
     }
     
-    return JSValue(XPLMGetDatad(ref));
+    return JSValue(CallOnMainThread([&] { return XPLMGetDatad(ref); }));
 }
 
 JSValue DataRefBindings::JS_GetDatavi(const JSObject& thisObject, const JSArgs& args) {
@@ -179,7 +180,7 @@ JSValue DataRefBindings::JS_GetDatavi(const JSObject& thisObject, const JSArgs& 
         return JSValue();
     }
     
-    int size = XPLMGetDatavi(ref, nullptr, 0, 0);
+    int size = CallOnMainThread([&] { return XPLMGetDatavi(ref, nullptr, 0, 0); });
     if (size <= 0) {
         return JSValue();
     }
@@ -199,7 +200,7 @@ JSValue DataRefBindings::JS_GetDatavi(const JSObject& thisObject, const JSArgs& 
     if (count > size - offset) count = size - offset;
     
     std::vector<int> values(count);
-    XPLMGetDatavi(ref, values.data(), offset, count);
+    CallOnMainThread([&] { XPLMGetDatavi(ref, values.data(), offset, count); });
     
     JSArray result;
     for (int i = 0; i < count; i++) {
@@ -224,7 +225,7 @@ JSValue DataRefBindings::JS_GetDatavf(const JSObject& thisObject, const JSArgs& 
         return JSValue();
     }
     
-    int size = XPLMGetDatavf(ref, nullptr, 0, 0);
+    int size = CallOnMainThread([&] { return XPLMGetDatavf(ref, nullptr, 0, 0); });
     if (size <= 0) {
         return JSValue();
     }
@@ -244,7 +245,7 @@ JSValue DataRefBindings::JS_GetDatavf(const JSObject& thisObject, const JSArgs& 
     if (count > size - offset) count = size - offset;
     
     std::vector<float> values(count);
-    XPLMGetDatavf(ref, values.data(), offset, count);
+    CallOnMainThread([&] { XPLMGetDatavf(ref, values.data(), offset, count); });
     
     JSArray result;
     for (int i = 0; i < count; i++) {
@@ -269,7 +270,7 @@ JSValue DataRefBindings::JS_GetDatab(const JSObject& thisObject, const JSArgs& a
         return JSValue("");
     }
     
-    int size = XPLMGetDatab(ref, nullptr, 0, 0);
+    int size = CallOnMainThread([&] { return XPLMGetDatab(ref, nullptr, 0, 0); });
     if (size <= 0) {
         return JSValue("");
     }
@@ -289,7 +290,7 @@ JSValue DataRefBindings::JS_GetDatab(const JSObject& thisObject, const JSArgs& a
     if (maxBytes > size - offset) maxBytes = size - offset;
     
     std::vector<char> buffer(maxBytes + 1, 0);
-    XPLMGetDatab(ref, buffer.data(), offset, maxBytes);
+    CallOnMainThread([&] { XPLMGetDatab(ref, buffer.data(), offset, maxBytes); });
     
     return JSValue(buffer.data());
 }
@@ -314,12 +315,12 @@ JSValue DataRefBindings::JS_SetDatai(const JSObject& thisObject, const JSArgs& a
         return JSValue(false);
     }
     
-    if (!XPLMCanWriteDataRef(ref)) {
+    if (!CallOnMainThread([&] { return XPLMCanWriteDataRef(ref) != 0; })) {
         LogMsg("JSBindings: dataref is read-only: %s", name_str.c_str());
         return JSValue(false);
     }
     
-    XPLMSetDatai(ref, value);
+    CallOnMainThread([&] { XPLMSetDatai(ref, value); });
     return JSValue(true);
 }
 
@@ -339,12 +340,12 @@ JSValue DataRefBindings::JS_SetDataf(const JSObject& thisObject, const JSArgs& a
         return JSValue(false);
     }
     
-    if (!XPLMCanWriteDataRef(ref)) {
+    if (!CallOnMainThread([&] { return XPLMCanWriteDataRef(ref) != 0; })) {
         LogMsg("JSBindings: dataref is read-only: %s", name_str.c_str());
         return JSValue(false);
     }
     
-    XPLMSetDataf(ref, value);
+    CallOnMainThread([&] { XPLMSetDataf(ref, value); });
     return JSValue(true);
 }
 
@@ -364,12 +365,12 @@ JSValue DataRefBindings::JS_SetDatad(const JSObject& thisObject, const JSArgs& a
         return JSValue(false);
     }
     
-    if (!XPLMCanWriteDataRef(ref)) {
+    if (!CallOnMainThread([&] { return XPLMCanWriteDataRef(ref) != 0; })) {
         LogMsg("JSBindings: dataref is read-only: %s", name_str.c_str());
         return JSValue(false);
     }
     
-    XPLMSetDatad(ref, value);
+    CallOnMainThread([&] { XPLMSetDatad(ref, value); });
     return JSValue(true);
 }
 
@@ -388,7 +389,7 @@ JSValue DataRefBindings::JS_SetDatavi(const JSObject& thisObject, const JSArgs& 
         return JSValue(false);
     }
     
-    if (!XPLMCanWriteDataRef(ref)) {
+    if (!CallOnMainThread([&] { return XPLMCanWriteDataRef(ref) != 0; })) {
         LogMsg("JSBindings: dataref is read-only: %s", name_str.c_str());
         return JSValue(false);
     }
@@ -404,7 +405,7 @@ JSValue DataRefBindings::JS_SetDatavi(const JSObject& thisObject, const JSArgs& 
         values.push_back(static_cast<int>(arr[i].ToNumber()));
     }
     
-    XPLMSetDatavi(ref, values.data(), offset, static_cast<int>(values.size()));
+    CallOnMainThread([&] { XPLMSetDatavi(ref, values.data(), offset, static_cast<int>(values.size())); });
     return JSValue(true);
 }
 
@@ -423,7 +424,7 @@ JSValue DataRefBindings::JS_SetDatavf(const JSObject& thisObject, const JSArgs& 
         return JSValue(false);
     }
     
-    if (!XPLMCanWriteDataRef(ref)) {
+    if (!CallOnMainThread([&] { return XPLMCanWriteDataRef(ref) != 0; })) {
         LogMsg("JSBindings: dataref is read-only: %s", name_str.c_str());
         return JSValue(false);
     }
@@ -439,7 +440,7 @@ JSValue DataRefBindings::JS_SetDatavf(const JSObject& thisObject, const JSArgs& 
         values.push_back(static_cast<float>(arr[i].ToNumber()));
     }
     
-    XPLMSetDatavf(ref, values.data(), offset, static_cast<int>(values.size()));
+    CallOnMainThread([&] { XPLMSetDatavf(ref, values.data(), offset, static_cast<int>(values.size())); });
     return JSValue(true);
 }
 
@@ -461,7 +462,7 @@ JSValue DataRefBindings::JS_SetDatab(const JSObject& thisObject, const JSArgs& a
         return JSValue(false);
     }
     
-    if (!XPLMCanWriteDataRef(ref)) {
+    if (!CallOnMainThread([&] { return XPLMCanWriteDataRef(ref) != 0; })) {
         LogMsg("JSBindings: dataref is read-only: %s", name_str.c_str());
         return JSValue(false);
     }
@@ -471,6 +472,6 @@ JSValue DataRefBindings::JS_SetDatab(const JSObject& thisObject, const JSArgs& a
         offset = static_cast<int>(args[2].ToNumber());
     }
     
-    XPLMSetDatab(ref, const_cast<char*>(value_str.c_str()), offset, static_cast<int>(value_str.length()));
+    CallOnMainThread([&] { XPLMSetDatab(ref, const_cast<char*>(value_str.c_str()), offset, static_cast<int>(value_str.length())); });
     return JSValue(true);
 }
