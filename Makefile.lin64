@@ -2,10 +2,27 @@ OBJDIR=./build/lin
 
 include Makefile.common
 
-# HIDAPI Linux backend (hidraw + libudev)
+# ── HIDAPI Linux backend (hidraw + libudev) ───────────────────────────────────
 SOURCES_C=src/third_party/hidapi/hid_linux.c
 
 INCLUDES+=-IUltralight-SDK-1.4.0-Linux/include
+
+# ── CEF optional support ──────────────────────────────────────────────────────
+# Run scripts/fetch-cef.sh once to download and build CEF before enabling.
+# To enable: make -f Makefile.lin64 SKYSCRIPT_CEF_ENABLED=1
+ifneq ($(SKYSCRIPT_CEF_ENABLED),)
+CEF_VERSION ?= 132.0.3+g9e7f85e+chromium-132.0.6834.111
+CEF_DIR     := cef_binary_$(CEF_VERSION)_linux64
+
+INCLUDES += -I$(CEF_DIR)
+LIBS     += -L$(CEF_DIR)/build/libcef_dll_wrapper -lcef_dll_wrapper \
+            -L$(CEF_DIR) -lcef
+
+CFLAGS   += -DSKYSCRIPT_CEF_ENABLED=1
+
+HELPER_TARGET := build/skyscript-cef-helper
+HELPER_SOURCES := src/cef_subprocess.cpp
+endif
 
 TARGET=build/lin.xpl
 
@@ -40,7 +57,7 @@ LIBS=-lcurl -lz -lOpenGL \
 
 all: $(TARGET)
 
-$(OBJDIR)/%.o: %.cpp $(DEPDIR)/%.d version.mak | $(DEPDIR)/src $(OBJDIR)/src $(DEPDIR)/src/bindings $(OBJDIR)/src/bindings
+$(OBJDIR)/%.o: %.cpp $(DEPDIR)/%.d version.mak | $(DEPDIR)/src $(OBJDIR)/src $(DEPDIR)/src/bindings $(OBJDIR)/src/bindings $(DEPDIR)/src/bindings/cef $(OBJDIR)/src/bindings/cef
 	$(COMPILE.cpp) -o $@  $<
 
 $(OBJDIR)/%.o: %.c $(DEPDIR)/%.d version.mak | $(DEPDIR)/src $(OBJDIR)/src
@@ -48,24 +65,34 @@ $(OBJDIR)/%.o: %.c $(DEPDIR)/%.d version.mak | $(DEPDIR)/src $(OBJDIR)/src
 
 $(DEPDIR)/src/bindings:
 	@mkdir -p $@
+	@mkdir -p $@/cef
 
 $(OBJDIR)/src/bindings:
 	@mkdir -p $@
+	@mkdir -p $@/cef
 
 XPL_DIR=/e/X-Plane-12-test
 
 $(TARGET): $(OBJECTS)
 	$(LD) -o $(TARGET) $(LDFLAGS) $(OBJECTS) $(LIBS)
+ifneq ($(SKYSCRIPT_CEF_ENABLED),)
+	# Build standalone CEF helper subprocess
+	$(CXX) $(CXXFLAGS) -o $(HELPER_TARGET) $(HELPER_SOURCES) \
+	    -L$(CEF_DIR)/build/libcef_dll_wrapper -lcef_dll_wrapper \
+	    -L$(CEF_DIR) -lcef -Wl,-rpath,'$$ORIGIN'
+endif
 
 $(DEPDIR)/src:
 	@mkdir -p $@
 	@mkdir -p $(DEPDIR)/src/third_party/hidapi
 	@mkdir -p $(DEPDIR)/src/bindings
+	@mkdir -p $(DEPDIR)/src/bindings/cef
 
 $(OBJDIR)/src:
 	@mkdir -p $@
 	@mkdir -p $(OBJDIR)/src/third_party/hidapi
 	@mkdir -p $(OBJDIR)/src/bindings
+	@mkdir -p $(OBJDIR)/src/bindings/cef
 
 $(DEPFILES):
 include $(wildcard $(DEPFILES))

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <future>
 #include <vector>
+#include <unordered_map>
 
 #include "XPLMDataAccess.h"
 #include "XPLMScenery.h"
@@ -22,8 +23,10 @@
 
 #include "log_msg.h"
 #include "../version.h"
-#include "app.h"
+#include "app_base.h"
+
 using namespace ultralight;
+
 class Manager
 {
 
@@ -66,9 +69,9 @@ public:
     bool reloadApp(const std::string& name);
     bool openAppWindow(const std::string& name);
     bool openAppInspector(const std::string& name);
+    bool setAppRenderer(const std::string& name, const std::string& renderer);
 
 private:
-    // ...existing code...
     char name[128] = {};
     char signature[128] = {};
     char description[256] = {};
@@ -76,7 +79,7 @@ private:
     std::string app_name, xp_dir, plugin_dir, output_dir, pref_path;
     XPLMMenuID menu_;
 
-    std::unordered_map<std::string, std::unique_ptr<App>> apps_;
+    std::unordered_map<std::string, std::unique_ptr<AppBase>> apps_;
 
 private:
     Manager();

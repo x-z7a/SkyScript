@@ -1,6 +1,12 @@
 #include "manager.h"
+#include "ultralight_app.h"
+#include "cef_manager.h"
+#include "manifest_config.h"
 #include "bindings/hid.h"
 #include "bindings/utilities.h"
+#include "third_party/picojson.h"
+
+#include <fstream>
 
 Manager &Manager::instance()
 {
@@ -14,13 +20,10 @@ Manager::Manager()
     strcpy(name, (app_name + " - " VERSION_SHORT " - ").c_str());
     strcpy(signature, "com.github.x-z7a.skyscript");
     strcpy(description, "Powerfull JavaScript runtime for X-Plane plugins");
-
-    // renderer_ = Renderer::Create();
 }
 
 Manager::~Manager()
 {
-    // Destructor code here
 }
 
 float update(float inElapsedSinceLastCall, float inElapsedTimeSinceLastFlightLoop, int inCounter, void *inRefcon)
@@ -29,20 +32,22 @@ float update(float inElapsedSinceLastCall, float inElapsedTimeSinceLastFlightLoo
     {
         Manager::instance().renderer_->Update();
     }
+    // Drive CEF message loop on the main thread (no-op if CEF not initialized)
+    CefManager::instance().DoMessageLoopWork();
     return -1.0f; // call me every frame for smooth rendering
 }
 
-// Draw callback - called during X-Plane's 2D drawing phase
+// Draw callback — called during X-Plane's 2D drawing phase
 int drawCallback(XPLMDrawingPhase inPhase, int inIsBefore, void *inRefcon)
 {
     if (!Manager::instance().renderer_)
     {
         return 1;
     }
-    Manager::instance().forceRepaintAllApps(); // Mark all visible views as needing paint
-    Manager::instance().renderer_->Render();   // Render views to bitmaps
-    Manager::instance().updateAllApps();       // Upload bitmaps to textures
-    Manager::instance().drawAllApps();         // Draw textured quads
+    Manager::instance().forceRepaintAllApps();
+    Manager::instance().renderer_->Render();
+    Manager::instance().updateAllApps();
+    Manager::instance().drawAllApps();
     return 1;
 }
 
@@ -52,22 +57,14 @@ PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void *params)
     {
     case XPLM_MSG_PLANE_LOADED:
         if ((intptr_t)params != 0)
-        {
-            // It was not the user's plane. Ignore.
             return;
-        }
-
         LogMsg("Plane loaded message received.");
         Manager::instance().initializeAllApps();
         break;
 
     case XPLM_MSG_PLANE_UNLOADED:
         if ((intptr_t)params != 0)
-        {
-            // It was not the user's plane. Ignore.
             return;
-        }
-
         LogMsg("Plane unloaded message received.");
         Manager::instance().destroyAllApps();
         break;
@@ -81,45 +78,43 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
 {
     LogMsg("Startup " VERSION);
 
-    // Initialization code here
     strcpy(out_name, name);
     strcpy(out_sig, signature);
     strcpy(out_desc, description);
 
-    // Always use Unix-native paths on the Mac!
     XPLMEnableFeature("XPLM_USE_NATIVE_PATHS", 1);
     XPLMEnableFeature("XPLM_USE_NATIVE_WIDGET_WINDOWS", 1);
 
     char buffer[2048];
     XPLMGetSystemPath(buffer);
-    std::string base_dir(buffer); // has trailing slash
-    // get current xpl location
+    std::string base_dir(buffer);
+
     char xpl_path[2048];
     XPLMGetPluginInfo(XPLMGetMyID(), nullptr, xpl_path, nullptr, nullptr);
     std::string plugin_path(xpl_path);
-    // go back up two levels to get to the plugin's root folder
     std::string current_plugin_dir = plugin_path.substr(0, plugin_path.find_last_of("/\\"));
 
     Manager::instance().setXpDir(base_dir);
     Manager::instance().setPluginDir(current_plugin_dir);
     Manager::instance().setOutputDir(base_dir + "Output/" + app_name);
     Manager::instance().setPrefPath(base_dir + "Output/preferences/" + app_name + ".prf");
+
     std::filesystem::create_directories(Manager::instance().getOutputDir());
     std::filesystem::create_directories(Manager::instance().getOutputDir() + "/cache");
 
-    // Create Top Level Menu
+    // Create top-level menu
     XPLMMenuID root_menu = XPLMFindPluginsMenu();
-    menu_ = XPLMCreateMenu("SkyScript", root_menu, XPLMAppendMenuItem(root_menu, "SkyScript", NULL, 0), this->menuCB, nullptr);
+    menu_ = XPLMCreateMenu("SkyScript", root_menu,
+                           XPLMAppendMenuItem(root_menu, "SkyScript", NULL, 0),
+                           this->menuCB, nullptr);
 
-    // Discover apps and create menu items
     discoverApps();
 
     LogMsg("XPluginStart done, xp_dir: '%s'", Manager::instance().getXpDir().c_str());
 
-    // intialize Ultralight here
+    // Initialize Ultralight
     Config config;
-    // config.user_stylesheet = "body { background-color: #202020; color: #E0E0E0; }";
-    config.cache_path = (output_dir + "/cache").c_str(); // For persistent sessions
+    config.cache_path = (output_dir + "/cache").c_str();
     Platform::instance().set_config(config);
     Platform::instance().set_font_loader(GetPlatformFontLoader());
     Platform::instance().set_file_system(GetPlatformFileSystem(plugin_dir.c_str()));
@@ -127,10 +122,11 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
 
     renderer_ = Renderer::Create();
 
-    // register XP draw callbacks to call renderer_->Update() and renderer_->Render()
-    XPLMRegisterFlightLoopCallback(update, 0.1, nullptr);
+    // Initialize CEF (no-op if SKYSCRIPT_CEF_ENABLED is not defined)
+    std::string cef_cache = output_dir + "/cef_cache";
+    CefManager::instance().Initialize(current_plugin_dir, cef_cache);
 
-    // Register draw callback to draw all app windows during 2D phase
+    XPLMRegisterFlightLoopCallback(update, 0.1, nullptr);
     XPLMRegisterDrawCallback(drawCallback, xplm_Phase_Window, 0, nullptr);
 
     Manager::instance().initializeAllApps();
@@ -141,8 +137,6 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
 void Manager::enable()
 {
     LogMsg("Plugin enabled");
-
-    // Re-initialize apps if renderer exists (plugin was re-enabled after disable)
     if (renderer_)
     {
         LogMsg("Re-initializing apps after plugin re-enable");
@@ -156,24 +150,26 @@ void Manager::disable()
     UtilitiesBindings::Shutdown();
     HidBindings::Shutdown();
     destroyAllApps();
+    // Do NOT call CefManager::Shutdown() here — CEF cannot be re-initialized.
+    // CEF browsers are destroyed via destroyAllApps() → CefApp::Destroy().
 }
 
 void Manager::stop()
 {
     LogMsg("Plugin stopping - cleaning up resources");
 
-    // Unregister callbacks
     XPLMUnregisterFlightLoopCallback(update, nullptr);
     XPLMUnregisterDrawCallback(drawCallback, xplm_Phase_Window, 0, nullptr);
 
-    // Release JS callback wrappers and HID handles while runtime is still alive.
     UtilitiesBindings::Shutdown();
     HidBindings::Shutdown();
 
-    // Destroy all apps after callbacks are gone.
     destroyAllApps();
 
-    // Release the renderer
+    // Shut down CEF before releasing the Ultralight renderer.
+    // CefShutdown() is safe to call even if Initialize() was a no-op.
+    CefManager::instance().Shutdown();
+
     if (renderer_)
     {
         LogMsg("Releasing Ultralight renderer");
@@ -192,7 +188,6 @@ void Manager::menuCB(void *menu_ref, void *item_ref)
         return;
     }
 
-    // Find the app and toggle its window
     auto &apps = Manager::instance().apps_;
     auto it = apps.find(item_name);
     if (it != apps.end() && it->second)
@@ -206,9 +201,10 @@ void Manager::menuCB(void *menu_ref, void *item_ref)
     }
 }
 
+// ── App discovery ─────────────────────────────────────────────────────────────
+
 void Manager::discoverApps()
 {
-    // find all folders under plugin_dir + "/apps"
     std::string apps_dir = plugin_dir + "/apps";
 
     if (!std::filesystem::exists(apps_dir))
@@ -217,109 +213,108 @@ void Manager::discoverApps()
         return;
     }
 
-    // First pass: discover all apps except app_manager
+    auto create_app = [&](const std::string &app_name_str, const std::string &app_dir) {
+        ManifestConfig config = ReadManifestConfig(app_dir + "/manifest.json");
+
+        std::unique_ptr<AppBase> app;
+        if (config.renderer_type == RendererType::Cef)
+        {
+#ifdef SKYSCRIPT_CEF_ENABLED
+            // CefApp will be included when CEF support is compiled in.
+            // For now fall through to Ultralight with a warning.
+            LogMsg("[%s] CEF renderer requested but SKYSCRIPT_CEF_ENABLED build not yet complete — using Ultralight", app_name_str.c_str());
+            app = std::make_unique<UltralightApp>(app_name_str, app_dir);
+#else
+            LogMsg("[%s] CEF renderer requested but SKYSCRIPT_CEF_ENABLED not defined — falling back to Ultralight", app_name_str.c_str());
+            app = std::make_unique<UltralightApp>(app_name_str, app_dir);
+#endif
+        }
+        else
+        {
+            app = std::make_unique<UltralightApp>(app_name_str, app_dir);
+        }
+
+        apps_.emplace(app_name_str, std::move(app));
+        auto &stored = apps_[app_name_str];
+        XPLMAppendMenuItem(menu_, stored->GetDisplayName().c_str(),
+                           (void *)stored->GetName().c_str(), 0);
+    };
+
+    // First pass: all apps except app_manager
     for (const auto &entry : std::filesystem::directory_iterator(apps_dir))
     {
-        if (entry.is_directory())
-        {
-            std::string app_dir = entry.path().string();
-            std::string app_name = entry.path().filename().string();
+        if (!entry.is_directory())
+            continue;
 
-            // Skip app_manager for now - we'll add it last
-            if (app_name == "app_manager")
-            {
-                continue;
-            }
+        std::string app_dir  = entry.path().string();
+        std::string app_name_str = entry.path().filename().string();
 
-            LogMsg("Discovered app: %s, dir: %s", app_name.c_str(), app_dir.c_str());
+        if (app_name_str == "app_manager")
+            continue;
 
-            // Create App (but don't initialize yet - renderer not ready)
-            auto app = std::make_unique<App>(app_name, app_dir);
-            apps_.emplace(app_name, std::move(app));
-
-            // Create menu item for this app (use the stored name from map key)
-            auto &stored_app = apps_[app_name];
-            XPLMAppendMenuItem(menu_, stored_app->GetDisplayName().c_str(),
-                               (void *)stored_app->GetName().c_str(), 0);
-        }
+        LogMsg("Discovered app: %s, dir: %s", app_name_str.c_str(), app_dir.c_str());
+        create_app(app_name_str, app_dir);
     }
 
-    // Now add app_manager as a system app at the end with a separator
-    std::string app_manager_dir = apps_dir + "/app_manager";
-    if (std::filesystem::exists(app_manager_dir) && std::filesystem::is_directory(app_manager_dir))
+    // app_manager last, with separator
+    std::string mgr_dir = apps_dir + "/app_manager";
+    if (std::filesystem::exists(mgr_dir) && std::filesystem::is_directory(mgr_dir))
     {
-        LogMsg("Discovered system app: app_manager, dir: %s", app_manager_dir.c_str());
+        LogMsg("Discovered system app: app_manager, dir: %s", mgr_dir.c_str());
 
-        // Create App
-        auto app = std::make_unique<App>("app_manager", app_manager_dir);
+        auto app = std::make_unique<UltralightApp>("app_manager", mgr_dir);
         apps_.emplace("app_manager", std::move(app));
 
-        // Add separator before app_manager
         XPLMAppendMenuSeparator(menu_);
 
-        // Create menu item for app_manager
-        auto &stored_app = apps_["app_manager"];
-        XPLMAppendMenuItem(menu_, stored_app->GetDisplayName().c_str(),
-                           (void *)stored_app->GetName().c_str(), 0);
+        auto &stored = apps_["app_manager"];
+        XPLMAppendMenuItem(menu_, stored->GetDisplayName().c_str(),
+                           (void *)stored->GetName().c_str(), 0);
     }
 }
 
+// ── App lifecycle ─────────────────────────────────────────────────────────────
+
 void Manager::initializeAllApps()
 {
-    // Initialize all discovered apps (renderer is now ready)
     for (auto &[name, app] : apps_)
     {
         if (app)
         {
             LogMsg("Initializing app: %s", name.c_str());
-            app->Initialize(renderer_);
+            app->Initialize();
         }
     }
 }
 
 void Manager::updateAllApps()
 {
-    // Update textures for all visible apps
     for (auto &[name, app] : apps_)
     {
         if (app && app->IsVisible())
-        {
             app->UpdateTexture();
-        }
-        // Also update inspector texture if visible
         if (app && app->IsInspectorVisible())
-        {
             app->UpdateInspectorTexture();
-        }
     }
 }
 
 void Manager::drawAllApps()
 {
-    // Draw all visible apps
     for (auto &[name, app] : apps_)
     {
         if (app && app->IsVisible())
-        {
             app->Draw();
-        }
-        // Also draw inspector if visible
         if (app && app->IsInspectorVisible())
-        {
             app->DrawInspector();
-        }
     }
 }
 
 void Manager::forceRepaintAllApps()
 {
-    // Force all visible views to repaint
     for (auto &[name, app] : apps_)
     {
         if (app && (app->IsVisible() || app->IsInspectorVisible()))
-        {
             app->ForceRepaint();
-        }
     }
 }
 
@@ -337,17 +332,13 @@ void Manager::destroyAllApps()
     LogMsg("All apps destroyed");
 }
 
-// =========================================================================
-// App Management API (for SkyScript JS bindings)
-// =========================================================================
+// ── App Management API ────────────────────────────────────────────────────────
 
 std::vector<std::string> Manager::getAppNames() const
 {
     std::vector<std::string> names;
     for (const auto &[name, app] : apps_)
-    {
         names.push_back(name);
-    }
     return names;
 }
 
@@ -369,13 +360,11 @@ bool Manager::openAppWindow(const std::string &name)
     auto it = apps_.find(name);
     if (it != apps_.end() && it->second)
     {
-        // Initialize if not already done
-        if (!it->second->IsInitialized() && renderer_)
+        if (!it->second->IsInitialized())
         {
             LogMsg("Initializing app on demand: %s", name.c_str());
-            it->second->Initialize(renderer_);
+            it->second->Initialize();
         }
-
         if (it->second->IsInitialized())
         {
             LogMsg("Opening app window: %s", name.c_str());
@@ -392,13 +381,11 @@ bool Manager::openAppInspector(const std::string &name)
     auto it = apps_.find(name);
     if (it != apps_.end() && it->second)
     {
-        // Initialize if not already done
-        if (!it->second->IsInitialized() && renderer_)
+        if (!it->second->IsInitialized())
         {
             LogMsg("Initializing app on demand: %s", name.c_str());
-            it->second->Initialize(renderer_);
+            it->second->Initialize();
         }
-
         if (it->second->IsInitialized())
         {
             LogMsg("Opening inspector for app: %s", name.c_str());
@@ -408,4 +395,88 @@ bool Manager::openAppInspector(const std::string &name)
     }
     LogMsg("Failed to open app inspector (not found or not initialized): %s", name.c_str());
     return false;
+}
+
+bool Manager::setAppRenderer(const std::string &name, const std::string &renderer)
+{
+    auto it = apps_.find(name);
+    if (it == apps_.end())
+    {
+        LogMsg("setAppRenderer: app not found: %s", name.c_str());
+        return false;
+    }
+
+    // Validate renderer string
+    if (renderer != "ultralight" && renderer != "cef")
+    {
+        LogMsg("setAppRenderer: unknown renderer '%s' for app '%s'", renderer.c_str(), name.c_str());
+        return false;
+    }
+
+    // Write "renderer" key to the app's manifest.json
+    std::string app_dir = plugin_dir + "/apps/" + name;
+    std::string manifest_file = app_dir + "/manifest.json";
+
+    // Read existing manifest
+    std::ifstream fin(manifest_file);
+    std::string contents;
+    if (fin.is_open())
+    {
+        contents.assign((std::istreambuf_iterator<char>(fin)),
+                         std::istreambuf_iterator<char>());
+        fin.close();
+    }
+
+    // Rewrite manifest.json with the new "renderer" key using picojson.
+    {
+        picojson::value root;
+        std::string err = picojson::parse(root, contents);
+        picojson::object obj;
+        if (err.empty() && root.is_object())
+            obj = root.get_object();
+
+        obj["renderer"] = picojson::value(renderer);
+
+        std::string new_contents = picojson::value(obj).serialize(true);
+        std::ofstream fout(manifest_file);
+        if (!fout.is_open())
+        {
+            LogMsg("setAppRenderer: cannot write manifest: %s", manifest_file.c_str());
+            return false;
+        }
+        fout << new_contents;
+        LogMsg("setAppRenderer: wrote renderer='%s' to %s", renderer.c_str(), manifest_file.c_str());
+    }
+
+    // Destroy and recreate the app with the new renderer
+    bool was_visible = it->second->IsVisible();
+    if (it->second->IsInitialized())
+        it->second->Destroy();
+
+    // Re-read manifest and recreate app
+    ManifestConfig config = ReadManifestConfig(manifest_file);
+    std::unique_ptr<AppBase> new_app;
+
+    if (config.renderer_type == RendererType::Cef)
+    {
+#ifdef SKYSCRIPT_CEF_ENABLED
+        LogMsg("setAppRenderer: falling through to Ultralight (CefApp not yet implemented)");
+        new_app = std::make_unique<UltralightApp>(name, app_dir);
+#else
+        LogMsg("setAppRenderer: CEF not compiled in, using Ultralight");
+        new_app = std::make_unique<UltralightApp>(name, app_dir);
+#endif
+    }
+    else
+    {
+        new_app = std::make_unique<UltralightApp>(name, app_dir);
+    }
+
+    new_app->Initialize();
+    if (was_visible)
+        new_app->Show();
+
+    it->second = std::move(new_app);
+    LogMsg("setAppRenderer: app '%s' recreated with renderer '%s'", name.c_str(), renderer.c_str());
+    return true;
 }
