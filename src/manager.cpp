@@ -122,9 +122,10 @@ int Manager::initialize(char *out_name, char *out_sig, char *out_desc)
 
     renderer_ = Renderer::Create();
 
-    // Initialize CEF (no-op if SKYSCRIPT_CEF_ENABLED is not defined)
-    std::string cef_cache = output_dir + "/cef_cache";
-    CefManager::instance().Initialize(current_plugin_dir, cef_cache);
+    // Attach to X-Plane's existing CEF instance (client mode).
+    // X-Plane owns the CEF process lifetime; we only create browser instances.
+    // (no-op if SKYSCRIPT_CEF_ENABLED is not defined)
+    CefManager::instance().Initialize(current_plugin_dir, "");
 
     XPLMRegisterFlightLoopCallback(update, 0.1, nullptr);
     XPLMRegisterDrawCallback(drawCallback, xplm_Phase_Window, 0, nullptr);
@@ -150,8 +151,8 @@ void Manager::disable()
     UtilitiesBindings::Shutdown();
     HidBindings::Shutdown();
     destroyAllApps();
-    // Do NOT call CefManager::Shutdown() here — CEF cannot be re-initialized.
-    // CEF browsers are destroyed via destroyAllApps() → CefApp::Destroy().
+    // CEF browsers are destroyed above via destroyAllApps() → CefApp::Destroy().
+    // We do not touch the CEF context itself — X-Plane owns it.
 }
 
 void Manager::stop()
@@ -166,8 +167,8 @@ void Manager::stop()
 
     destroyAllApps();
 
-    // Shut down CEF before releasing the Ultralight renderer.
-    // CefShutdown() is safe to call even if Initialize() was a no-op.
+    // Release our CEF client-mode reference.
+    // Does NOT call CefShutdown() — X-Plane owns the CEF process lifetime.
     CefManager::instance().Shutdown();
 
     if (renderer_)

@@ -3,14 +3,18 @@
 #include <string>
 
 /**
- * @brief Singleton that owns the CEF process lifetime.
+ * @brief Singleton that manages SkyScript's use of X-Plane's CEF instance.
  *
- * CEF CANNOT be re-initialized after CefShutdown() is called in the same
- * process.  Therefore:
- *   - CefInitialize is called once in Manager::initialize() → CefManager::Initialize()
- *   - CefShutdown  is called once in Manager::stop()       → CefManager::Shutdown()
- *   - XPluginDisable / XPluginEnable only destroy/recreate CefBrowserHost instances;
- *     they do NOT call Shutdown()/Initialize() again.
+ * X-Plane initializes CEF for its own use before any plugin is loaded.
+ * There can only be one CEF instance per process, so this plugin operates
+ * in "client mode": it creates CefBrowser instances (like tabs) inside
+ * X-Plane's already-running CEF context without ever calling
+ * CefInitialize() or CefShutdown().
+ *
+ *   - Initialize() marks the manager as ready for browser creation.
+ *   - Shutdown()   releases our readiness flag; does NOT call CefShutdown().
+ *   - X-Plane drives CEF's message loop internally; DoMessageLoopWork()
+ *     is therefore a no-op.
  *
  * When built without SKYSCRIPT_CEF_ENABLED, all methods are no-ops and
  * IsInitialized() always returns false.
@@ -21,27 +25,26 @@ public:
     static CefManager &instance();
 
     /**
-     * Initialize CEF.  Must be called from X-Plane's main thread, once,
-     * before any CefApp instance is created.
+     * Mark the CEF client as ready.  Must be called from X-Plane's main
+     * thread before any CefApp instance is created.
      *
-     * @param plugin_dir  Absolute path to the SkyScript plugin folder
-     *                    (used to locate the helper subprocess binary).
-     * @param cache_dir   Absolute path for CEF's disk cache.
+     * Does NOT call CefInitialize() — X-Plane owns the CEF process lifetime.
+     *
+     * @param plugin_dir  Unused (kept for call-site compatibility).
+     * @param cache_dir   Unused (X-Plane controls the CEF cache).
      */
     void Initialize(const std::string &plugin_dir, const std::string &cache_dir);
 
     /**
-     * Shut down CEF.  Called exactly once from Manager::stop() (XPluginStop).
-     * Must not be called from XPluginDisable — only from XPluginStop.
+     * Mark the CEF client as no longer ready.  Called from Manager::stop().
+     *
+     * Does NOT call CefShutdown() — X-Plane owns the CEF process lifetime.
      */
     void Shutdown();
 
     /**
-     * Drive CEF's message loop.  Call every frame from the X-Plane flight
-     * loop callback.  This is a no-op when multi_threaded_message_loop is
-     * false (our configuration).
-     *
-     * Must NOT be called after Shutdown().
+     * No-op.  X-Plane drives CEF's message loop internally; plugins must
+     * not call CefDoMessageLoopWork().
      */
     void DoMessageLoopWork();
 
