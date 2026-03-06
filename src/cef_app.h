@@ -28,9 +28,8 @@ class SkyScriptRenderHandler;
  *
  * Thread safety:
  *   - All XPLM / OpenGL calls happen on X-Plane's main thread.
- *   - CefDoMessageLoopWork() (called from the flight loop) also runs on the
- *     main thread, so OnPaint() arrives on the main thread — no locking needed
- *     for the pixel buffer provided multi_threaded_message_loop=false (default).
+ *   - X-Plane drives CEF's message loop internally, so OnPaint() arrives on
+ *     the main thread — no locking needed for the pixel buffer.
  *
  * Requires SKYSCRIPT_CEF_ENABLED to be defined and CEF SDK headers available.
  * The CEF SDK is downloaded by scripts/fetch-cef.sh.
