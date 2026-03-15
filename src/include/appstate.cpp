@@ -52,7 +52,7 @@ bool AppState::initialize() {
         return false;
     }
 
-    if (!loadConfig(false)) {
+    if (!loadConfig()) {
         return false;
     }
 
@@ -265,15 +265,66 @@ App* AppState::findApp(const std::string& id) {
     return nullptr;
 }
 
-bool AppState::loadConfig(bool isReloading) {
+void AppState::reload() {
+    if (!pluginInitialized) {
+        return;
+    }
+
+    debug("Reloading plugin...\n");
+
+    // Tear down all existing apps
+    Dataref::getInstance()->destroyAllBindings();
+
+    for (auto* app : apps) {
+        app->deinitialize();
+        delete app;
+    }
+    apps.clear();
+    activeApp = nullptr;
+
+    // Reload config and rescan
+    loadConfig();
+    scanApps();
+
+    // Re-create global toggle command
+    Dataref::getInstance()->createCommand("skyscript/toggle", "Show or hide the last active app", [this](XPLMCommandPhase inPhase) {
+        if (inPhase != xplm_CommandBegin) {
+            return;
+        }
+
+        if (activeApp) {
+            if (activeApp->visible) {
+                activeApp->hideBrowser();
+            }
+            else {
+                activeApp->showBrowser();
+            }
+        }
+        else if (!apps.empty()) {
+            apps[0]->showBrowser();
+            activeApp = apps[0];
+        }
+    });
+
+    // Initialize and register all apps
+    for (auto* app : apps) {
+        app->initialize();
+        app->registerWindow();
+    }
+
+    if (!apps.empty() && !activeApp) {
+        activeApp = apps[0];
+    }
+
+    debug("Plugin reloaded. %zu app(s) discovered.\n", apps.size());
+}
+
+bool AppState::loadConfig() {
     if (Path::getInstance()->pluginDirectory.empty()) {
         return false;
     }
 
     std::string filename = Path::getInstance()->pluginDirectory + "/config.ini";
-    if (isReloading) {
-        debug("Reloading configuration at %s...\n", filename.c_str());
-    }
 
     if (!fileExists(filename)) {
         const char *defaultConfig = R"(# Browser window configuration file.
@@ -336,33 +387,6 @@ framerate=
     globalConfig.debug_value_2 = reader.GetReal("debug", "debug_value_2", 0.0f);
     globalConfig.debug_value_3 = reader.GetReal("debug", "debug_value_3", 0.0f);
 #endif
-
-    if (isReloading) {
-        debug("Config file has been reloaded.\n");
-
-        // Update config for all apps and reinitialize their browsers
-        for (auto* app : apps) {
-            // Re-merge global config into app config (preserving manifest overrides would require re-scanning)
-            app->config = globalConfig;
-
-            App::current = app;
-            if (app->browser) {
-                std::string url = app->browser->currentUrl;
-                bool wasVisible = app->visible;
-                app->browser->visibilityWillChange(false);
-                app->browser->destroy();
-                app->browser->initialize();
-                if (!url.empty()) {
-                    app->browser->loadUrl(url);
-                }
-                if (wasVisible) {
-                    app->browser->visibilityWillChange(true);
-                    app->browser->resize();
-                }
-            }
-            App::current = nullptr;
-        }
-    }
 
     return true;
 }

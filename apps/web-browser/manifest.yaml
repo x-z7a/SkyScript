@@ -1,2 +1,3 @@
 name: Web Browser
 url: https://www.google.com
+hide_addressbar: false

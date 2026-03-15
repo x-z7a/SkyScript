@@ -37,6 +37,7 @@ PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void* params)
 float update(float inElapsedSinceLastCall, float inElapsedTimeSinceLastFlightLoop, int inCounter, void *inRefcon);
 void menuAction(void* mRef, void* iRef);
 void captureVrChanges();
+void populateAppsMenu();
 
 XPLMMenuID pluginMenuId = nullptr;
 XPLMMenuID appsMenuId = nullptr;
@@ -116,14 +117,7 @@ PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void* params)
             }
 
             if (AppState::getInstance()->initialize()) {
-                // Populate Apps submenu after scanning
-                auto* state = AppState::getInstance();
-                for (int i = 0; i < static_cast<int>(state->apps.size()); i++) {
-                    if (i == state->defaultAppsStartIndex && i > 0) {
-                        XPLMAppendMenuSeparator(appsMenuId);
-                    }
-                    XPLMAppendMenuItem(appsMenuId, state->apps[i]->name.c_str(), state->apps[i], 0);
-                }
+                populateAppsMenu();
             }
             break;
 
@@ -166,7 +160,11 @@ void menuAction(void* mRef, void* iRef) {
     if (!isAppPointer) {
         // It's a string action
         if (strcmp((char *)iRef, "ActionReloadConfig") == 0) {
-            AppState::getInstance()->loadConfig();
+            if (appsMenuId) {
+                XPLMClearAllMenuItems(appsMenuId);
+            }
+            AppState::getInstance()->reload();
+            populateAppsMenu();
             return;
         }
 
@@ -226,6 +224,16 @@ float update(float inElapsedSinceLastCall, float inElapsedTimeSinceLastFlightLoo
     }
 
     return REFRESH_INTERVAL_SECONDS_FAST;
+}
+
+void populateAppsMenu() {
+    auto* state = AppState::getInstance();
+    for (int i = 0; i < static_cast<int>(state->apps.size()); i++) {
+        if (i == state->defaultAppsStartIndex && i > 0) {
+            XPLMAppendMenuSeparator(appsMenuId);
+        }
+        XPLMAppendMenuItem(appsMenuId, state->apps[i]->name.c_str(), state->apps[i], 0);
+    }
 }
 
 void captureVrChanges() {

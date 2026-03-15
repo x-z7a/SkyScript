@@ -29,8 +29,9 @@ public:
 
     void update();
 
-    bool loadConfig(bool isReloading = true);
+    bool loadConfig();
     void scanApps();
+    void reload();
     App* findApp(const std::string& id);
 };
 
