@@ -1,6 +1,7 @@
 #include "dataref.h"
 #include "config.h"
 #include "app.h"
+#include <cstring>
 #include <XPLMUtilities.h>
 #include <XPLMDisplay.h>
 
