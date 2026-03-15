@@ -1,3 +1,4 @@
 name: About SkyScript
 hide_addressbar: true
 framerate: 15
+default: true

@@ -166,105 +166,93 @@ void AppState::update() {
 
 void AppState::scanApps() {
     std::string pluginDir = Path::getInstance()->pluginDirectory;
+    std::string appsDir = pluginDir + "/" + APPS_DIRECTORY;
 
-    // Scan default/ directory
-    std::string defaultDir = pluginDir + "/" + DEFAULT_DIRECTORY;
-    if (std::filesystem::exists(defaultDir) && std::filesystem::is_directory(defaultDir)) {
-        for (const auto& entry : std::filesystem::directory_iterator(defaultDir)) {
-            if (!entry.is_directory()) {
-                continue;
-            }
-
-            std::string folderName = entry.path().filename().string();
-            std::string manifestPath = entry.path().string() + "/manifest.yaml";
-            std::string indexPath = entry.path().string() + "/index.html";
-
-            AppConfiguration appConfig = globalConfig;
-            std::string appName = folderName;
-
-            if (std::filesystem::exists(manifestPath)) {
-                appConfig = App::parseManifest(manifestPath, globalConfig);
-
-                // Parse name from manifest separately
-                std::ifstream file(manifestPath);
-                std::string line;
-                while (std::getline(file, line)) {
-                    if (line.find("name:") == 0 || line.find("name :") == 0) {
-                        size_t colonPos = line.find(':');
-                        std::string value = line.substr(colonPos + 1);
-                        auto trimStart = value.find_first_not_of(" \t");
-                        auto trimEnd = value.find_last_not_of(" \t\r\n");
-                        if (trimStart != std::string::npos) {
-                            appName = value.substr(trimStart, trimEnd - trimStart + 1);
-                        }
-                        break;
-                    }
-                }
-            }
-
-            if (appConfig.homepage == globalConfig.homepage || appConfig.homepage.empty()) {
-                if (std::filesystem::exists(indexPath)) {
-                    appConfig.homepage = "file://" + indexPath;
-                }
-            }
-
-            std::string appId = "default-" + folderName;
-            App* app = new App(appName, appId, AppType::Default, appConfig);
-            apps.push_back(app);
-            debug("Discovered default app: %s (id: %s)\n", appName.c_str(), appId.c_str());
-        }
+    if (!std::filesystem::exists(appsDir) || !std::filesystem::is_directory(appsDir)) {
+        return;
     }
 
-    // Add built-in web browser app
-    AppConfiguration webConfig = globalConfig;
-    App* webApp = new App("Web Browser", "web", AppType::Web, webConfig);
-    apps.push_back(webApp);
+    std::vector<App*> regularApps;
+    std::vector<App*> defaultApps;
 
-    // Scan apps/ directory
-    std::string appsDir = pluginDir + "/" + APPS_DIRECTORY;
-    if (std::filesystem::exists(appsDir) && std::filesystem::is_directory(appsDir)) {
-        for (const auto& entry : std::filesystem::directory_iterator(appsDir)) {
-            if (!entry.is_directory()) {
-                continue;
-            }
-
-            std::string folderName = entry.path().filename().string();
-            std::string manifestPath = entry.path().string() + "/manifest.yaml";
-            std::string indexPath = entry.path().string() + "/index.html";
-
-            AppConfiguration appConfig = globalConfig;
-            std::string appName = folderName;
-
-            if (std::filesystem::exists(manifestPath)) {
-                appConfig = App::parseManifest(manifestPath, globalConfig);
-
-                std::ifstream file(manifestPath);
-                std::string line;
-                while (std::getline(file, line)) {
-                    if (line.find("name:") == 0 || line.find("name :") == 0) {
-                        size_t colonPos = line.find(':');
-                        std::string value = line.substr(colonPos + 1);
-                        auto trimStart = value.find_first_not_of(" \t");
-                        auto trimEnd = value.find_last_not_of(" \t\r\n");
-                        if (trimStart != std::string::npos) {
-                            appName = value.substr(trimStart, trimEnd - trimStart + 1);
-                        }
-                        break;
-                    }
-                }
-            }
-
-            if (appConfig.homepage == globalConfig.homepage || appConfig.homepage.empty()) {
-                if (std::filesystem::exists(indexPath)) {
-                    appConfig.homepage = "file://" + indexPath;
-                }
-            }
-
-            std::string appId = "app-" + folderName;
-            App* app = new App(appName, appId, AppType::Folder, appConfig);
-            apps.push_back(app);
-            debug("Discovered folder app: %s (id: %s)\n", appName.c_str(), appId.c_str());
+    for (const auto& entry : std::filesystem::directory_iterator(appsDir)) {
+        if (!entry.is_directory()) {
+            continue;
         }
+
+        std::string folderName = entry.path().filename().string();
+        std::string manifestPath = entry.path().string() + "/manifest.yaml";
+        std::string indexPath = entry.path().string() + "/index.html";
+
+        AppConfiguration appConfig = globalConfig;
+        std::string appName = folderName;
+        bool appIsDefault = false;
+
+        if (std::filesystem::exists(manifestPath)) {
+            appConfig = App::parseManifest(manifestPath, globalConfig);
+
+            // Parse name and default flag from manifest
+            std::ifstream file(manifestPath);
+            std::string line;
+            while (std::getline(file, line)) {
+                size_t colonPos = line.find(':');
+                if (colonPos == std::string::npos) {
+                    continue;
+                }
+
+                std::string key = line.substr(0, colonPos);
+                std::string value = line.substr(colonPos + 1);
+
+                // Trim key
+                auto ks = key.find_first_not_of(" \t");
+                auto ke = key.find_last_not_of(" \t");
+                if (ks != std::string::npos) {
+                    key = key.substr(ks, ke - ks + 1);
+                }
+
+                // Trim value
+                auto vs = value.find_first_not_of(" \t");
+                auto ve = value.find_last_not_of(" \t\r\n");
+                if (vs != std::string::npos) {
+                    value = value.substr(vs, ve - vs + 1);
+                } else {
+                    value = "";
+                }
+
+                if (key == "name" && !value.empty()) {
+                    appName = value;
+                } else if (key == "default") {
+                    appIsDefault = (value == "true" || value == "1");
+                }
+            }
+        }
+
+        if (appConfig.homepage.empty() || appConfig.homepage == App::defaultConfig().homepage) {
+            if (std::filesystem::exists(indexPath)) {
+                appConfig.homepage = "file://" + indexPath;
+            }
+        }
+
+        std::string appId = "app-" + folderName;
+        App* app = new App(appName, appId, AppType::Folder, appConfig);
+        app->isDefault = appIsDefault;
+
+        if (appIsDefault) {
+            defaultApps.push_back(app);
+        } else {
+            regularApps.push_back(app);
+        }
+
+        debug("Discovered app: %s (id: %s, default: %s)\n", appName.c_str(), appId.c_str(), appIsDefault ? "yes" : "no");
+    }
+
+    // Regular apps first, then default apps (with separator between them in menu)
+    for (auto* app : regularApps) {
+        apps.push_back(app);
+    }
+    defaultAppsStartIndex = static_cast<int>(apps.size());
+    for (auto* app : defaultApps) {
+        apps.push_back(app);
     }
 }
 
@@ -275,10 +263,6 @@ App* AppState::findApp(const std::string& id) {
         }
     }
     return nullptr;
-}
-
-App* AppState::getOrCreateWebApp() {
-    return findApp("web");
 }
 
 bool AppState::loadConfig(bool isReloading) {

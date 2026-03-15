@@ -34,6 +34,7 @@ App::App(const std::string& aName, const std::string& anId, AppType aType, const
     name = aName;
     id = anId;
     type = aType;
+    isDefault = false;
     config = aConfig;
     notification = nullptr;
     window = nullptr;

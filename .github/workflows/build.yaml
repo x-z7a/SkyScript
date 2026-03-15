@@ -389,6 +389,10 @@ jobs:
                   cp "${app_dir}manifest.yaml" "dist/${PRODUCT_NAME}/apps/${app_name}/"
                 fi
                 echo "Bundled app: $app_name"
+              elif [ -f "${app_dir}manifest.yaml" ]; then
+                mkdir -p "dist/${PRODUCT_NAME}/apps/${app_name}"
+                cp "${app_dir}manifest.yaml" "dist/${PRODUCT_NAME}/apps/${app_name}/"
+                echo "Bundled app (manifest only): $app_name"
               fi
             done
           fi

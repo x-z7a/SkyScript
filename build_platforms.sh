@@ -296,11 +296,15 @@ if [ -d "apps" ]; then
         app_name=$(basename "$app_dir")
         if [ -d "${app_dir}build" ]; then
             cp -r "${app_dir}build" "build/dist/apps/${app_name}"
-            # Copy manifest.yaml if present
             if [ -f "${app_dir}manifest.yaml" ]; then
                 cp "${app_dir}manifest.yaml" "build/dist/apps/${app_name}/"
             fi
             printf 'Bundled app: %s\n' "$app_name"
+        elif [ -f "${app_dir}manifest.yaml" ]; then
+            # Manifest-only app (no build step, e.g. web-browser)
+            mkdir -p "build/dist/apps/${app_name}"
+            cp "${app_dir}manifest.yaml" "build/dist/apps/${app_name}/"
+            printf 'Bundled app (manifest only): %s\n' "$app_name"
         fi
     done
 fi

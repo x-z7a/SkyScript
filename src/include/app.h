@@ -12,7 +12,7 @@ class Notification;
 
 #include "button.h"
 
-enum class AppType { Folder, Web, Default };
+enum class AppType { Folder };
 
 struct WindowViewport {
     int x;
@@ -67,6 +67,7 @@ public:
     std::string name;
     std::string id;
     AppType type;
+    bool isDefault;
 
     XPLMWindowID window;
     float brightness;

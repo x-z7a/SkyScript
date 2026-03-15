@@ -20,6 +20,7 @@ public:
     App* activeApp;
     bool pluginInitialized = false;
     AppConfiguration globalConfig;
+    int defaultAppsStartIndex = 0;
 
     static AppState* getInstance();
     bool initialize();
@@ -31,7 +32,6 @@ public:
     bool loadConfig(bool isReloading = true);
     void scanApps();
     App* findApp(const std::string& id);
-    App* getOrCreateWebApp();
 };
 
 #endif

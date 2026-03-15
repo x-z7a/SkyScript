@@ -118,9 +118,11 @@ PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void* params)
             if (AppState::getInstance()->initialize()) {
                 // Populate Apps submenu after scanning
                 auto* state = AppState::getInstance();
-                for (auto* app : state->apps) {
-                    // Use the app pointer as the menu item ref
-                    XPLMAppendMenuItem(appsMenuId, app->name.c_str(), app, 0);
+                for (int i = 0; i < static_cast<int>(state->apps.size()); i++) {
+                    if (i == state->defaultAppsStartIndex && i > 0) {
+                        XPLMAppendMenuSeparator(appsMenuId);
+                    }
+                    XPLMAppendMenuItem(appsMenuId, state->apps[i]->name.c_str(), state->apps[i], 0);
                 }
             }
             break;
