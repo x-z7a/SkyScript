@@ -24,12 +24,13 @@
 #include <XPLMProcessing.h>
 #include <XPLMUtilities.h>
 
-BrowserHandler::BrowserHandler(int aTextureId, std::string *aCurrentUrl, unsigned short aWidth, unsigned short aHeight) {
+BrowserHandler::BrowserHandler(int aTextureId, std::string *aCurrentUrl, AppConfiguration *anAppConfig, unsigned short aWidth, unsigned short aHeight) {
     textureId = aTextureId;
     popupRect = {0, 0, 0, 0};
     popupShown = false;
     needsFullDraw = true;
     currentUrl = aCurrentUrl;
+    appConfig = anAppConfig;
     windowWidth = aWidth;
     windowHeight = aHeight;
     cursorState = CursorDefault;
@@ -184,6 +185,7 @@ void BrowserHandler::OnLoadingStateChange(CefRefPtr<CefBrowser> browser, bool is
     (void)canGoForward;
 
     if (!isLoading) {
+        injectAddressBar(browser);
         *currentUrl = browser->GetMainFrame()->GetURL().ToString();
     }
 }
@@ -384,10 +386,11 @@ void BrowserHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame
     }
 
     overrideGeolocationAndNavigator(browser);
+    injectAddressBar(browser);
 }
 
 void BrowserHandler::overrideGeolocationAndNavigator(CefRefPtr<CefBrowser> browser) {
-    std::string userAgent = App::current ? App::current->config.user_agent : "Mozilla/5.0";
+    std::string userAgent = appConfig ? appConfig->user_agent : "Mozilla/5.0";
 
     std::string javascript =
         "function setUserAgent(window, userAgent) {"
@@ -436,4 +439,149 @@ void BrowserHandler::overrideGeolocationAndNavigator(CefRefPtr<CefBrowser> brows
                     "window.dispatchEvent(new Event('load'));";
 
     browser->GetMainFrame()->ExecuteJavaScript(javascript.c_str(), browser->GetMainFrame()->GetURL(), 0);
+}
+
+void BrowserHandler::injectAddressBar(CefRefPtr<CefBrowser> browser) {
+    if (!appConfig || appConfig->hide_addressbar) {
+        return;
+    }
+
+    const std::string jsCode = R"(
+        (function() {
+            if (document.getElementById('cefToolbar')) {
+                document.getElementById('cefBack').style.filter = ')" +
+                               std::string(browser->CanGoBack() ? "" : "brightness(1.5) saturate(0)") + R"(';
+                document.getElementById('cefForward').style.filter = ')" +
+                               std::string(browser->CanGoForward() ? "" : "brightness(1.5) saturate(0)") + R"(';
+                return;
+            }
+
+            const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const chevron = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9.971 13.623"><path fill-opacity=".85" fill="#007AFF" d="M0 6.807c0 .214.088.41.244.576l6.035 5.996a.773.773 0 0 0 .576.234.78.78 0 0 0 .801-.8.83.83 0 0 0-.234-.577l-5.45-5.43 5.45-5.43a.847.847 0 0 0 .234-.575.78.78 0 0 0-.8-.801.773.773 0 0 0-.577.234L.244 6.23A.831.831 0 0 0 0 6.807Z"/></svg>');
+            const refresh = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13.994 18.271"><path fill-opacity=".85" fill="#999999" d="M0 9.717a6.816 6.816 0 1 0 13.633 0c0-.44-.303-.742-.733-.742-.41 0-.673.302-.673.732 0 2.988-2.422 5.4-5.41 5.4a5.401 5.401 0 0 1-5.41-5.4 5.41 5.41 0 0 1 5.41-5.41c.507 0 .966.02 1.376.107l-2.07 2.032a.663.663 0 0 0-.195.488c0 .4.302.703.683.703.225 0 .381-.078.508-.195l3.086-3.086a.685.685 0 0 0 .205-.508.719.719 0 0 0-.205-.498L7.12.215A.647.647 0 0 0 6.611 0c-.38 0-.683.322-.683.723 0 .185.068.361.185.498L7.91 2.998A5.769 5.769 0 0 0 6.816 2.9 6.81 6.81 0 0 0 0 9.717Z"/></svg>');
+
+            // Create container
+            const toolbar = document.createElement('div');
+            toolbar.id = 'cefToolbar';
+            toolbar.style.position = 'fixed';
+            toolbar.style.top = '0';
+            toolbar.style.left = '0';
+            toolbar.style.width = '100%';
+            toolbar.style.zIndex = '9999';
+            toolbar.style.padding = '4px';
+            toolbar.style.backgroundColor = isDarkMode ? '#1A1A1A' : '#EEE';
+            toolbar.style.boxSizing = 'border-box';
+            toolbar.style.display = 'flex';
+            toolbar.style.alignItems = 'center';
+            toolbar.style.gap = '8px';
+
+            // Back button
+            const backBtn = document.createElement('button');
+            backBtn.id = "cefBack";
+            backBtn.style.background = `url(${chevron}) no-repeat center / contain`;
+            backBtn.style.cursor = 'pointer';
+            backBtn.style.width = '14px';
+            backBtn.style.height = '14px';
+            backBtn.style.outline = 'none';
+            backBtn.style.border = 'none';
+            backBtn.onclick = function() {
+                window.history.back();
+            };
+
+            // Forward button
+            const fwdBtn = document.createElement('button');
+            fwdBtn.id = "cefForward";
+            fwdBtn.style.cssText = backBtn.style.cssText;
+            fwdBtn.style.transform = 'scaleX(-1)';
+            fwdBtn.onclick = function() {
+                window.history.forward();
+            };
+
+            // Address bar
+            const addressBar = document.createElement('input');
+            addressBar.type = 'text';
+            addressBar.id = 'cefAddressBar';
+            addressBar.value = window.location.href;
+            addressBar.style.flex = '1';
+            addressBar.style.fontSize = '12px';
+            addressBar.style.border = 'none';
+            addressBar.style.outline = 'none';
+            addressBar.style.height = '20px';
+            addressBar.style.color = isDarkMode ? '#D2D2D2' : '#1A1A1A';
+            addressBar.style.backgroundColor = isDarkMode ? '#000000' : '#D2D2D2';
+            addressBar.style.padding = '2px 8px';
+            addressBar.style.borderRadius = '12px';
+
+            const observer = new MutationObserver(() => {
+                addressBar.value = window.location.href;
+            });
+            observer.observe(document, { subtree: true, childList: true });
+
+            window.addEventListener("popstate", () => {
+                addressBar.value = window.location.href;
+            });
+
+            addressBar.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    if (!addressBar.value.startsWith('http')) {
+                        addressBar.value = "https://" + addressBar.value;
+                    }
+
+                    window.location.href = addressBar.value;
+                }
+            });
+
+            addressBar.addEventListener('blur', function(e) {
+                if (addressBar.value === '') {
+                    addressBar.value = window.location.href;
+                }
+            });
+
+            // Clear input button
+            const clearInputButton = document.createElement('button');
+            clearInputButton.textContent = String.fromCharCode(10005);
+            clearInputButton.style.cursor = 'pointer';
+            clearInputButton.style.color = isDarkMode ? '#D2D2D2' : '#1A1A1A';
+            clearInputButton.style.backgroundColor = 'transparent';
+            clearInputButton.style.fontSize = '12px';
+            clearInputButton.style.width = '14px';
+            clearInputButton.style.height = '14px';
+            clearInputButton.style.outline = 'none';
+            clearInputButton.style.border = 'none';
+            clearInputButton.style.position = 'absolute';
+            clearInputButton.style.right = '32px';
+            clearInputButton.style.zIndex = '9';
+            clearInputButton.onclick = function() {
+                addressBar.value = '';
+                addressBar.focus();
+            };
+
+            // Refresh button
+            const refreshButton = document.createElement('button');
+            refreshButton.style.background = `url(${refresh}) no-repeat center / contain`;
+            refreshButton.style.cursor = 'pointer';
+            refreshButton.style.width = '14px';
+            refreshButton.style.height = '14px';
+            refreshButton.style.outline = 'none';
+            refreshButton.style.border = 'none';
+            refreshButton.onclick = function() {
+                window.location.reload();
+            };
+
+            // Add elements to the toolbar
+            toolbar.appendChild(backBtn);
+            toolbar.appendChild(fwdBtn);
+            toolbar.appendChild(addressBar);
+            toolbar.appendChild(clearInputButton);
+            toolbar.appendChild(refreshButton);
+
+            // Insert toolbar at the very top of <body>
+            document.body.insertBefore(toolbar, document.body.firstChild);
+
+            // Add some spacing so the page content isn't hidden behind the toolbar
+            document.body.style.marginTop = '40px';
+        })();
+    )";
+
+    browser->GetMainFrame()->ExecuteJavaScript(jsCode, browser->GetMainFrame()->GetURL(), 0);
 }

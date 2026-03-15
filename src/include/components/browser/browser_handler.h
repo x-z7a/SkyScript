@@ -29,12 +29,14 @@ class BrowserHandler : public CefClient,
         bool popupShown;
         bool needsFullDraw;
         std::string *currentUrl;
+        struct AppConfiguration *appConfig;
         unsigned short windowWidth;
         unsigned short windowHeight;
         void overrideGeolocationAndNavigator(CefRefPtr<CefBrowser> browser);
+        void injectAddressBar(CefRefPtr<CefBrowser> browser);
 
     public:
-        BrowserHandler(int textureId, std::string *currentUrl, unsigned short width, unsigned short height);
+        BrowserHandler(int textureId, std::string *currentUrl, struct AppConfiguration *appConfig, unsigned short width, unsigned short height);
         ~BrowserHandler();
 
         bool hasInputFocus;
