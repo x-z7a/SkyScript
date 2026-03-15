@@ -3,10 +3,13 @@
 
 #include <XPLMDisplay.h>
 #include <XPLMDefs.h>
+
 #include "button.h"
 
 #include <include/cef_app.h>
 #include "browser_handler.h"
+
+class App;
 
 class Browser {
 private:

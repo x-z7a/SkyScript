@@ -26,11 +26,12 @@
 #include <include/wrapper/cef_closure_task.h>
 #include <include/wrapper/cef_helpers.h>
 
-#include "appstate.h"
+#include "app.h"
 #include "browser_handler.h"
 #include "config.h"
 #include "dataref.h"
 #include "drawing.h"
+#include "notification.h"
 #include "path.h"
 
 #if APL
@@ -43,7 +44,7 @@
 Browser::Browser() {
     textureId = 0;
     offsetStart = 0.0f;
-    offsetEnd = AppState::browserTopRatio;
+    offsetEnd = App::browserTopRatio;
     lastGpsUpdateTime = 0.0f;
     backButton = nullptr;
     handler = nullptr;
@@ -55,35 +56,38 @@ void Browser::initialize() {
         return;
     }
 
-    offsetStart = 0.0f;
-    offsetEnd = AppState::browserTopRatio;
+    App* app = App::current;
 
-    std::string icon = AppState::getInstance()->config.hide_addressbar ? "/assets/icons/arrow-left-circle.svg" : "/assets/icons/x-circle.svg";
+    offsetStart = 0.0f;
+    offsetEnd = App::browserTopRatio;
+
+    std::string icon = app->config.hide_addressbar ? "/assets/icons/arrow-left-circle.svg" : "/assets/icons/x-circle.svg";
     backButton = new Button(Path::getInstance()->pluginDirectory + icon);
-    backButton->setPosition(backButton->relativeWidth / 2.0f + 0.01f, AppState::toolbarY);
-    backButton->setClickHandler([]() {
-        if (!AppState::getInstance()->browserVisible) {
+    backButton->setPosition(backButton->relativeWidth / 2.0f + 0.01f, App::toolbarY);
+    backButton->setClickHandler([app]() {
+        if (!app->visible) {
             return false;
         }
 
-        if (!AppState::getInstance()->config.hide_addressbar) {
-            AppState::getInstance()->hideBrowser();
+        if (!app->config.hide_addressbar) {
+            app->hideBrowser();
             return true;
         }
 
-        bool didGoBack = AppState::getInstance()->browser->goBack();
+        bool didGoBack = app->browser->goBack();
         if (!didGoBack) {
-            AppState::getInstance()->hideBrowser();
+            app->hideBrowser();
         }
 
         return true;
     });
 
-    currentUrl = AppState::getInstance()->config.homepage;
+    currentUrl = app->config.homepage;
     allocateTexture();
 
-    Dataref::getInstance()->createDataref<std::string>("skyscript/url", &currentUrl, true, [this](std::string newUrl) {
-        if (!newUrl.starts_with("http") && !newUrl.starts_with("chrome://") && !newUrl.starts_with("data:")) {
+    std::string datarefPrefix = "skyscript/" + app->id;
+    Dataref::getInstance()->createDataref<std::string>((datarefPrefix + "/url").c_str(), &currentUrl, true, [this](std::string newUrl) {
+        if (!newUrl.starts_with("http") && !newUrl.starts_with("chrome://") && !newUrl.starts_with("data:") && !newUrl.starts_with("file://")) {
             return false;
         }
 
@@ -91,7 +95,7 @@ void Browser::initialize() {
         return true;
     });
 
-    Dataref::getInstance()->createCommand("skyscript/refresh", "Refresh the current web page", [this](XPLMCommandPhase inPhase) {
+    Dataref::getInstance()->createCommand((datarefPrefix + "/refresh").c_str(), "Refresh the current web page", [this](XPLMCommandPhase inPhase) {
         if (inPhase != xplm_CommandBegin) {
             return;
         }
@@ -109,7 +113,7 @@ void Browser::allocateTexture() {
 
     XPLMBindTexture2d(textureId, 0);
 
-    const auto& viewport = AppState::getInstance()->viewport;
+    const auto& viewport = App::current->viewport;
     std::vector<unsigned char> whiteTextureData(
         viewport.textureWidth * viewport.textureHeight * WindowViewport::bytesPerPixel,
         0xFF
@@ -178,12 +182,14 @@ void Browser::update() {
         return;
     }
 
-    if (handler && AppState::getInstance()->browserVisible) {
+    App* app = App::current;
+
+    if (handler && app->visible) {
         CefDoMessageLoopWork();
     }
 
     if (backButton) {
-        backButton->visible = AppState::getInstance()->browserVisible;
+        backButton->visible = app->visible;
     }
 
     if (lastGpsUpdateTime > std::numeric_limits<float>::epsilon() && XPLMGetElapsedTime() > lastGpsUpdateTime + 1.0f) {
@@ -207,14 +213,14 @@ void Browser::draw() {
 
     XPLMBindTexture2d(textureId, 0);
 
-    const auto& viewport = AppState::getInstance()->viewport;
+    const auto& viewport = App::current->viewport;
     int x1 = viewport.x;
     int y1 = viewport.y + viewport.height * offsetStart;
     int x2 = x1 + viewport.width;
     int y2 = viewport.y + viewport.height * offsetEnd;
 
     glBegin(GL_QUADS);
-    set_brightness(AppState::getInstance()->brightness);
+    set_brightness(App::current->brightness);
 
     float u = (float)viewport.browserWidth / viewport.textureWidth;
     float v = (float)viewport.browserHeight / viewport.textureHeight;
@@ -245,7 +251,7 @@ void Browser::resize() {
         return;
     }
 
-    const auto& viewport = AppState::getInstance()->viewport;
+    const auto& viewport = App::current->viewport;
     handler->setViewSize(viewport.browserWidth, viewport.browserHeight);
     if (handler->browserInstance) {
         handler->browserInstance->GetHost()->WasResized();
@@ -442,6 +448,8 @@ bool Browser::createBrowser() {
         return false;
     }
 
+    App* app = App::current;
+
 #if APL
     CefScopedLibraryLoader library_loader;
     if (!library_loader.LoadInMain()) {
@@ -495,8 +503,8 @@ bool Browser::createBrowser() {
             break;
     }
 
-    if (!AppState::getInstance()->config.forced_language.empty()) {
-        language = AppState::getInstance()->config.forced_language;
+    if (!app->config.forced_language.empty()) {
+        language = app->config.forced_language;
     }
 
     if (!language.empty()) {
@@ -508,10 +516,10 @@ bool Browser::createBrowser() {
     CefRefPtr<CefRequestContext> request_context = CefRequestContext::CreateContext(context_settings, nullptr);
 
     CefBrowserSettings browser_settings;
-    browser_settings.windowless_frame_rate = AppState::getInstance()->config.framerate;
+    browser_settings.windowless_frame_rate = app->config.framerate;
     browser_settings.background_color = CefColorSetARGB(0xFF, 0xFF, 0xFF, 0xFF);
 
-    const auto& viewport = AppState::getInstance()->viewport;
+    const auto& viewport = app->viewport;
     handler = CefRefPtr<BrowserHandler>(new BrowserHandler(textureId, &currentUrl, viewport.browserWidth, viewport.browserHeight));
 
     CefWindowInfo window_info;
@@ -524,7 +532,7 @@ bool Browser::createBrowser() {
 
     bool browserCreated = CefBrowserHost::CreateBrowser(window_info, handler, currentUrl, browser_settings, nullptr, request_context);
     if (!browserCreated) {
-        AppState::getInstance()->showNotification(new Notification("Error creating browser", "An error occured while starting the browser.\nPlease verify if there are any updates for the " FRIENDLY_NAME " plugin and try again."));
+        app->showNotification(new Notification("Error creating browser", "An error occured while starting the browser.\nPlease verify if there are any updates for the " FRIENDLY_NAME " plugin and try again."));
     }
 
     return true;
@@ -572,7 +580,7 @@ void Browser::updateGPSLocation() {
 }
 
 CefMouseEvent Browser::getMouseEvent(float normalizedX, float normalizedY) {
-    const auto& viewport = AppState::getInstance()->viewport;
+    const auto& viewport = App::current->viewport;
 
     CefMouseEvent mouseEvent;
     mouseEvent.x = viewport.browserWidth * normalizedX;

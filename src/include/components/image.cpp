@@ -5,7 +5,7 @@
 #include <XPLMGraphics.h>
 #include <XPLMUtilities.h>
 
-#include "appstate.h"
+#include "app.h"
 #include "config.h"
 #include "lodepng.h"
 #define NANOSVG_IMPLEMENTATION
@@ -68,12 +68,12 @@ Image::Image(std::string filename) {
 
 #if SCALE_IMAGES
     float aspectRatio = (float)pixelsWidth / pixelsHeight;
-    pixelsWidth = (pixelsWidth * (float)AppState::getInstance()->viewport.width) / 800.0f;
+    pixelsWidth = (pixelsWidth * (float)App::current->viewport.width) / 800.0f;
     pixelsHeight = pixelsWidth / aspectRatio;
 #endif
 
-    relativeWidth = pixelsWidth / (float)AppState::getInstance()->viewport.width;
-    relativeHeight = pixelsHeight / (float)AppState::getInstance()->viewport.height;
+    relativeWidth = pixelsWidth / (float)App::current->viewport.width;
+    relativeHeight = pixelsHeight / (float)App::current->viewport.height;
 }
 
 void Image::destroy() {
@@ -105,7 +105,7 @@ void Image::draw() {
 
     XPLMBindTexture2d(textureId, 0);
 
-    const auto& viewport = AppState::getInstance()->viewport;
+    const auto& viewport = App::current->viewport;
     float centerX = viewport.x + viewport.width * x;
     float centerY = viewport.y + viewport.height * y;
     float width = displayWidth();
@@ -122,7 +122,7 @@ void Image::draw() {
     float y1 = centerY - height / 2.0f;
 
     glBegin(GL_QUADS);
-    set_brightness(AppState::getInstance()->brightness);
+    set_brightness(App::current->brightness);
 
     glTexCoord2f(0, 1);
     glVertex2f(x1, y1);
@@ -150,9 +150,9 @@ void Image::setPosition(float normalizedX, float normalizedY, unsigned short aRo
 }
 
 float Image::displayWidth() const {
-    return relativeWidth > 0.0f ? AppState::getInstance()->viewport.width * relativeWidth : pixelsWidth;
+    return relativeWidth > 0.0f ? App::current->viewport.width * relativeWidth : pixelsWidth;
 }
 
 float Image::displayHeight() const {
-    return relativeHeight > 0.0f ? AppState::getInstance()->viewport.height * relativeHeight : pixelsHeight;
+    return relativeHeight > 0.0f ? App::current->viewport.height * relativeHeight : pixelsHeight;
 }

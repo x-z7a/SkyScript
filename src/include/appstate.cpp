@@ -6,41 +6,28 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <regex>
 
 #include <curl/curl.h>
 
+#include "browser.h"
 #include "INIReader.h"
 #include "config.h"
 #include "dataref.h"
 #include "json.hpp"
+#include "notification.h"
 #include "path.h"
-
-namespace {
-unsigned short nextPowerOfTwo(unsigned int value) {
-    unsigned int result = 1;
-    while (result < value) {
-        result <<= 1;
-    }
-
-    return static_cast<unsigned short>((std::min)(result, static_cast<unsigned int>(std::numeric_limits<unsigned short>::max())));
-}
-}
 
 AppState* AppState::instance = nullptr;
 
 AppState::AppState() {
     remoteVersion = "";
-    notification = nullptr;
-    mainWindow = nullptr;
     pluginInitialized = false;
-    browserVisible = false;
-    browser = nullptr;
-    activeCursor = CursorDefault;
-    brightness = 1.0f;
-    viewport = {0, 0, defaultWindowWidth, defaultWindowHeight, 0, 0, 0, 0};
+    activeApp = nullptr;
+    globalConfig = App::defaultConfig();
 }
 
 AppState::~AppState() {
@@ -60,10 +47,6 @@ bool AppState::initialize() {
         return false;
     }
 
-    browserVisible = false;
-    brightness = 1.0f;
-    activeCursor = CursorDefault;
-
     Path::getInstance()->reloadPaths();
     if (Path::getInstance()->pluginDirectory.empty()) {
         return false;
@@ -73,27 +56,37 @@ bool AppState::initialize() {
         return false;
     }
 
-    setViewport(0, 0, defaultWindowWidth, defaultWindowHeight);
+    scanApps();
 
-    if (!browser) {
-        browser = new Browser();
-    }
-
-    browser->initialize();
-
-    Dataref::getInstance()->createDataref<bool>("skyscript/visible", &browserVisible);
-    Dataref::getInstance()->createCommand("skyscript/toggle", "Show or hide the browser window", [this](XPLMCommandPhase inPhase) {
+    // Create global toggle command for backward compatibility
+    Dataref::getInstance()->createCommand("skyscript/toggle", "Show or hide the last active app", [this](XPLMCommandPhase inPhase) {
         if (inPhase != xplm_CommandBegin) {
             return;
         }
 
-        if (browserVisible) {
-            hideBrowser();
+        if (activeApp) {
+            if (activeApp->visible) {
+                activeApp->hideBrowser();
+            }
+            else {
+                activeApp->showBrowser();
+            }
         }
-        else {
-            showBrowser();
+        else if (!apps.empty()) {
+            apps[0]->showBrowser();
+            activeApp = apps[0];
         }
     });
+
+    // Initialize all apps
+    for (auto* app : apps) {
+        app->initialize();
+        app->registerWindow();
+    }
+
+    if (!apps.empty() && !activeApp) {
+        activeApp = apps[0];
+    }
 
     pluginInitialized = true;
     return true;
@@ -106,23 +99,14 @@ void AppState::deinitialize() {
 
     Dataref::getInstance()->destroyAllBindings();
 
-    if (notification) {
-        notification->destroy();
-        notification = nullptr;
+    for (auto* app : apps) {
+        app->deinitialize();
+        delete app;
     }
+    apps.clear();
+    activeApp = nullptr;
 
-    if (browser) {
-        browser->visibilityWillChange(false);
-        browser->destroy();
-        browser = nullptr;
-    }
-
-    tasks.clear();
-    buttons.clear();
-    browserVisible = false;
     pluginInitialized = false;
-    activeCursor = CursorDefault;
-    brightness = 1.0f;
 }
 
 void AppState::checkLatestVersion() {
@@ -161,7 +145,11 @@ void AppState::checkLatestVersion() {
         if (remoteVersionNumber > localVersionNumber) {
             debug("There is a newer version of the plugin available. Current: %s, latest: %s\n", VERSION, tag.c_str());
             std::string description = "There is an update available for the " + std::string(FRIENDLY_NAME) + " plugin.\n\nVersion " + tag + ".\n";
-            showNotification(new Notification("Update available", description));
+            if (activeApp) {
+                App::current = activeApp;
+                activeApp->showNotification(new Notification("Update available", description));
+                App::current = nullptr;
+            }
         }
     }
     catch (const std::exception& e) {
@@ -171,161 +159,126 @@ void AppState::checkLatestVersion() {
 }
 
 void AppState::update() {
-    if (!browser) {
-        return;
+    for (auto* app : apps) {
+        app->update();
     }
+}
 
-    brightness = 1.0f;
+void AppState::scanApps() {
+    std::string pluginDir = Path::getInstance()->pluginDirectory;
 
-    if (browserVisible) {
-        syncWindowGeometry();
-    }
-
-    browser->update();
-
-    if (notification) {
-        notification->update();
-    }
-
-    tasks.erase(
-        std::remove_if(tasks.begin(), tasks.end(), [&](const DelayedTask& task) {
-            if (XPLMGetElapsedTime() > task.executeAfterElapsedSeconds) {
-                task.func();
-                return true;
+    // Scan default/ directory
+    std::string defaultDir = pluginDir + "/" + DEFAULT_DIRECTORY;
+    if (std::filesystem::exists(defaultDir) && std::filesystem::is_directory(defaultDir)) {
+        for (const auto& entry : std::filesystem::directory_iterator(defaultDir)) {
+            if (!entry.is_directory()) {
+                continue;
             }
 
-            return false;
-        }),
-        tasks.end()
-    );
-}
+            std::string folderName = entry.path().filename().string();
+            std::string manifestPath = entry.path().string() + "/manifest.yaml";
+            std::string indexPath = entry.path().string() + "/index.html";
 
-void AppState::draw() {
-    if (!pluginInitialized || !browserVisible) {
-        return;
+            AppConfiguration appConfig = globalConfig;
+            std::string appName = folderName;
+
+            if (std::filesystem::exists(manifestPath)) {
+                appConfig = App::parseManifest(manifestPath, globalConfig);
+
+                // Parse name from manifest separately
+                std::ifstream file(manifestPath);
+                std::string line;
+                while (std::getline(file, line)) {
+                    if (line.find("name:") == 0 || line.find("name :") == 0) {
+                        size_t colonPos = line.find(':');
+                        std::string value = line.substr(colonPos + 1);
+                        auto trimStart = value.find_first_not_of(" \t");
+                        auto trimEnd = value.find_last_not_of(" \t\r\n");
+                        if (trimStart != std::string::npos) {
+                            appName = value.substr(trimStart, trimEnd - trimStart + 1);
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (appConfig.homepage == globalConfig.homepage || appConfig.homepage.empty()) {
+                if (std::filesystem::exists(indexPath)) {
+                    appConfig.homepage = "file://" + indexPath;
+                }
+            }
+
+            std::string appId = "default-" + folderName;
+            App* app = new App(appName, appId, AppType::Default, appConfig);
+            apps.push_back(app);
+            debug("Discovered default app: %s (id: %s)\n", appName.c_str(), appId.c_str());
+        }
     }
 
-    syncWindowGeometry();
+    // Add built-in web browser app
+    AppConfiguration webConfig = globalConfig;
+    App* webApp = new App("Web Browser", "web", AppType::Web, webConfig);
+    apps.push_back(webApp);
 
-    browser->draw();
-    if (notification) {
-        notification->draw();
-    }
-}
+    // Scan apps/ directory
+    std::string appsDir = pluginDir + "/" + APPS_DIRECTORY;
+    if (std::filesystem::exists(appsDir) && std::filesystem::is_directory(appsDir)) {
+        for (const auto& entry : std::filesystem::directory_iterator(appsDir)) {
+            if (!entry.is_directory()) {
+                continue;
+            }
 
-bool AppState::syncWindowGeometry(bool resizeBrowser) {
-    if (!mainWindow) {
-        return false;
-    }
+            std::string folderName = entry.path().filename().string();
+            std::string manifestPath = entry.path().string() + "/manifest.yaml";
+            std::string indexPath = entry.path().string() + "/index.html";
 
-    int left, top, right, bottom;
-    XPLMGetWindowGeometry(mainWindow, &left, &top, &right, &bottom);
+            AppConfiguration appConfig = globalConfig;
+            std::string appName = folderName;
 
-    unsigned short width = static_cast<unsigned short>((std::max)(1, right - left));
-    unsigned short height = static_cast<unsigned short>((std::max)(1, top - bottom));
-    bool changed = setViewport(left, bottom, width, height);
-    if (changed && resizeBrowser && browser) {
-        browser->resize();
-    }
+            if (std::filesystem::exists(manifestPath)) {
+                appConfig = App::parseManifest(manifestPath, globalConfig);
 
-    return changed;
-}
+                std::ifstream file(manifestPath);
+                std::string line;
+                while (std::getline(file, line)) {
+                    if (line.find("name:") == 0 || line.find("name :") == 0) {
+                        size_t colonPos = line.find(':');
+                        std::string value = line.substr(colonPos + 1);
+                        auto trimStart = value.find_first_not_of(" \t");
+                        auto trimEnd = value.find_last_not_of(" \t\r\n");
+                        if (trimStart != std::string::npos) {
+                            appName = value.substr(trimStart, trimEnd - trimStart + 1);
+                        }
+                        break;
+                    }
+                }
+            }
 
-bool AppState::normalizeWindowPoint(int x, int y, float *normalizedX, float *normalizedY) {
-    syncWindowGeometry(false);
+            if (appConfig.homepage == globalConfig.homepage || appConfig.homepage.empty()) {
+                if (std::filesystem::exists(indexPath)) {
+                    appConfig.homepage = "file://" + indexPath;
+                }
+            }
 
-    if (viewport.width == 0 || viewport.height == 0) {
-        return false;
-    }
-
-    *normalizedX = static_cast<float>(x - viewport.x) / viewport.width;
-    *normalizedY = static_cast<float>(y - viewport.y) / viewport.height;
-
-    return !(*normalizedX < -0.1f || *normalizedX > 1.1f || *normalizedY < -0.1f || *normalizedY > 1.1f);
-}
-
-void AppState::applyWindowMode() {
-    if (!mainWindow) {
-        return;
-    }
-
-    bool isVrEnabled = Dataref::getInstance()->get<bool>("sim/graphics/VR/enabled");
-    XPLMSetWindowPositioningMode(mainWindow, isVrEnabled ? xplm_WindowVR : xplm_WindowPositionFree, -1);
-
-    if (browserVisible) {
-        XPLMBringWindowToFront(mainWindow);
-    }
-}
-
-bool AppState::updateButtons(float normalizedX, float normalizedY, ButtonState state) {
-    bool didAct = false;
-    for (const auto& button : buttons) {
-        didAct = didAct || button->handleState(normalizedX, normalizedY, state);
-    }
-
-    return didAct;
-}
-
-void AppState::registerButton(Button *button) {
-    buttons.push_back(button);
-}
-
-void AppState::unregisterButton(Button *button) {
-    auto it = std::find(buttons.begin(), buttons.end(), button);
-    if (it != buttons.end()) {
-        buttons.erase(it);
-    }
-}
-
-void AppState::showBrowser(std::string url) {
-    if (!browser || !mainWindow) {
-        return;
-    }
-
-    if (!url.empty()) {
-        browser->loadUrl(url);
-    }
-
-    if (!browserVisible) {
-        browser->visibilityWillChange(true);
-        browserVisible = true;
-        XPLMSetWindowIsVisible(mainWindow, 1);
-        applyWindowMode();
-        syncWindowGeometry();
-        checkLatestVersion();
-    }
-
-    XPLMBringWindowToFront(mainWindow);
-}
-
-void AppState::hideBrowser() {
-    if (!browserVisible) {
-        return;
-    }
-
-    browser->visibilityWillChange(false);
-    browserVisible = false;
-    browser->setFocus(false);
-    XPLMTakeKeyboardFocus(0);
-
-    if (mainWindow) {
-        XPLMSetWindowIsVisible(mainWindow, 0);
+            std::string appId = "app-" + folderName;
+            App* app = new App(appName, appId, AppType::Folder, appConfig);
+            apps.push_back(app);
+            debug("Discovered folder app: %s (id: %s)\n", appName.c_str(), appId.c_str());
+        }
     }
 }
 
-void AppState::showNotification(Notification *aNotification) {
-    if (notification && notification != aNotification) {
-        notification->destroy();
+App* AppState::findApp(const std::string& id) {
+    for (auto* app : apps) {
+        if (app->id == id) {
+            return app;
+        }
     }
-
-    notification = aNotification;
+    return nullptr;
 }
 
-void AppState::executeDelayed(CallbackFunc func, float delaySeconds) {
-    tasks.push_back({
-        func,
-        XPLMGetElapsedTime() + delaySeconds
-    });
+App* AppState::getOrCreateWebApp() {
+    return findApp("web");
 }
 
 bool AppState::loadConfig(bool isReloading) {
@@ -385,41 +338,45 @@ framerate=
         return false;
     }
 
-    config.homepage = reader.Get("browser", "homepage", "https://www.google.com");
-    config.audio_muted = reader.GetBoolean("browser", "audio_muted", false);
-    config.minimum_width = reader.GetInteger("browser", "minimum_width", 0);
-    config.scroll_speed = reader.GetInteger("browser", "scroll_speed", 5);
-    config.forced_language = reader.Get("browser", "forced_language", "");
-    config.user_agent = reader.GetString("browser", "user_agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.2.5.0 Safari/537.36");
-    config.hide_addressbar = reader.GetBoolean("browser", "hide_addressbar", false);
-    config.framerate = reader.GetInteger("browser", "framerate", 25);
+    globalConfig.homepage = reader.Get("browser", "homepage", "https://www.google.com");
+    globalConfig.audio_muted = reader.GetBoolean("browser", "audio_muted", false);
+    globalConfig.minimum_width = reader.GetInteger("browser", "minimum_width", 0);
+    globalConfig.scroll_speed = reader.GetInteger("browser", "scroll_speed", 5);
+    globalConfig.forced_language = reader.Get("browser", "forced_language", "");
+    globalConfig.user_agent = reader.GetString("browser", "user_agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.2.5.0 Safari/537.36");
+    globalConfig.hide_addressbar = reader.GetBoolean("browser", "hide_addressbar", false);
+    globalConfig.framerate = reader.GetInteger("browser", "framerate", 25);
 
 #if DEBUG
-    config.debug_value_1 = reader.GetReal("debug", "debug_value_1", 0.0f);
-    config.debug_value_2 = reader.GetReal("debug", "debug_value_2", 0.0f);
-    config.debug_value_3 = reader.GetReal("debug", "debug_value_3", 0.0f);
+    globalConfig.debug_value_1 = reader.GetReal("debug", "debug_value_1", 0.0f);
+    globalConfig.debug_value_2 = reader.GetReal("debug", "debug_value_2", 0.0f);
+    globalConfig.debug_value_3 = reader.GetReal("debug", "debug_value_3", 0.0f);
 #endif
-
-    unsigned short width = viewport.width > 0 ? viewport.width : defaultWindowWidth;
-    unsigned short height = viewport.height > 0 ? viewport.height : defaultWindowHeight;
-    setViewport(viewport.x, viewport.y, width, height);
 
     if (isReloading) {
         debug("Config file has been reloaded.\n");
 
-        if (browser) {
-            std::string url = browser->currentUrl;
-            bool wasVisible = browserVisible;
-            browser->visibilityWillChange(false);
-            browser->destroy();
-            browser->initialize();
-            if (!url.empty()) {
-                browser->loadUrl(url);
+        // Update config for all apps and reinitialize their browsers
+        for (auto* app : apps) {
+            // Re-merge global config into app config (preserving manifest overrides would require re-scanning)
+            app->config = globalConfig;
+
+            App::current = app;
+            if (app->browser) {
+                std::string url = app->browser->currentUrl;
+                bool wasVisible = app->visible;
+                app->browser->visibilityWillChange(false);
+                app->browser->destroy();
+                app->browser->initialize();
+                if (!url.empty()) {
+                    app->browser->loadUrl(url);
+                }
+                if (wasVisible) {
+                    app->browser->visibilityWillChange(true);
+                    app->browser->resize();
+                }
             }
-            if (wasVisible) {
-                browser->visibilityWillChange(true);
-                browser->resize();
-            }
+            App::current = nullptr;
         }
     }
 
@@ -434,36 +391,4 @@ bool AppState::fileExists(std::string filename) {
 
     fileExistsHandle.close();
     return true;
-}
-
-bool AppState::setViewport(int x, int y, unsigned short width, unsigned short height) {
-    unsigned short safeWidth = (std::max<unsigned short>)(1, width);
-    unsigned short safeHeight = (std::max<unsigned short>)(1, height);
-    float multiplier = safeWidth < config.minimum_width ? static_cast<float>(config.minimum_width) / safeWidth : 1.0f;
-    unsigned short browserWidth = static_cast<unsigned short>(std::ceil(safeWidth * multiplier));
-    unsigned short browserHeight = static_cast<unsigned short>((std::max)(1.0f, std::ceil((safeHeight * browserTopRatio) * multiplier)));
-    unsigned short textureWidth = nextPowerOfTwo(browserWidth);
-    unsigned short textureHeight = nextPowerOfTwo(browserHeight);
-
-    bool changed = viewport.x != x ||
-        viewport.y != y ||
-        viewport.width != safeWidth ||
-        viewport.height != safeHeight ||
-        viewport.textureWidth != textureWidth ||
-        viewport.textureHeight != textureHeight ||
-        viewport.browserWidth != browserWidth ||
-        viewport.browserHeight != browserHeight;
-
-    viewport = {
-        x,
-        y,
-        safeWidth,
-        safeHeight,
-        textureWidth,
-        textureHeight,
-        browserWidth,
-        browserHeight
-    };
-
-    return changed;
 }

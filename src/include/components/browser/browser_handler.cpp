@@ -4,8 +4,9 @@
 
 #include "browser_handler.h"
 
-#include "appstate.h"
+#include "app.h"
 #include "config.h"
+#include "notification.h"
 #include "path.h"
 
 #include <cmath>
@@ -61,7 +62,9 @@ void BrowserHandler::setViewSize(unsigned short width, unsigned short height) {
 
 void BrowserHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
     browserInstance = browser;
-    browserInstance->GetHost()->SetAudioMuted(AppState::getInstance()->config.audio_muted);
+    if (App::current) {
+        browserInstance->GetHost()->SetAudioMuted(App::current->config.audio_muted);
+    }
 }
 
 bool BrowserHandler::DoClose(CefRefPtr<CefBrowser> browser) {
@@ -288,7 +291,9 @@ void BrowserHandler::OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFra
 bool BrowserHandler::OnJSDialog(CefRefPtr<CefBrowser> browser, const CefString &origin_url, JSDialogType dialog_type, const CefString &message_text, const CefString &default_prompt_text, CefRefPtr<CefJSDialogCallback> callback, bool &suppress_message) {
     suppress_message = true;
 
-    AppState::getInstance()->showNotification(new Notification("Alert", message_text.ToString()));
+    if (App::current) {
+        App::current->showNotification(new Notification("Alert", message_text.ToString()));
+    }
     return false;
 }
 
@@ -331,12 +336,16 @@ void BrowserHandler::OnBeforeDownload(CefRefPtr<CefBrowser> browser, CefRefPtr<C
     }
 
     // Cancel all other downloads (by default).
-    AppState::getInstance()->showNotification(new Notification("Download failed", "Could not download the requested file."));
+    if (App::current) {
+        App::current->showNotification(new Notification("Download failed", "Could not download the requested file."));
+    }
 }
 
 void BrowserHandler::OnDownloadUpdated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefDownloadItem> download_item, CefRefPtr<CefDownloadItemCallback> callback) {
     if (download_item->IsComplete()) {
-        AppState::getInstance()->showNotification(new Notification("Download finished", "The download has been completed."));
+        if (App::current) {
+            App::current->showNotification(new Notification("Download finished", "The download has been completed."));
+        }
     }
 }
 
@@ -349,7 +358,9 @@ cef_return_value_t BrowserHandler::OnBeforeResourceLoad(CefRefPtr<CefBrowser> br
     }
 
     headers.erase("User-Agent");
-    headers.insert(std::make_pair("User-Agent", AppState::getInstance()->config.user_agent));
+    if (App::current) {
+        headers.insert(std::make_pair("User-Agent", App::current->config.user_agent));
+    }
     request->SetHeaderMap(headers);
     return RV_CONTINUE;
 }
@@ -376,7 +387,7 @@ void BrowserHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame
 }
 
 void BrowserHandler::overrideGeolocationAndNavigator(CefRefPtr<CefBrowser> browser) {
-    std::string userAgent = AppState::getInstance()->config.user_agent;
+    std::string userAgent = App::current ? App::current->config.user_agent : "Mozilla/5.0";
 
     std::string javascript =
         "function setUserAgent(window, userAgent) {"

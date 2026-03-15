@@ -31,6 +31,8 @@
 #define ALL_PLUGINS_DIRECTORY "/Resources/plugins/"
 #define PLUGIN_DIRECTORY (ALL_PLUGINS_DIRECTORY PRODUCT_NAME)
 #define BUNDLE_ID "com.xz7a." PRODUCT_NAME
+#define APPS_DIRECTORY "apps"
+#define DEFAULT_DIRECTORY "default"
 
 #define SCALE_IMAGES 1
 

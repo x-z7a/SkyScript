@@ -1,6 +1,6 @@
 #include "dataref.h"
 #include "config.h"
-#include "appstate.h"
+#include "app.h"
 #include <XPLMUtilities.h>
 #include <XPLMDisplay.h>
 
@@ -302,8 +302,11 @@ bool Dataref::getMouse(float *normalizedX, float *normalizedY, float windowX, fl
         return false;
     }
     
-    *normalizedX = (mouseX - AppState::getInstance()->viewport.x) / AppState::getInstance()->viewport.width;
-    *normalizedY = (mouseY - AppState::getInstance()->viewport.y) / AppState::getInstance()->viewport.height;
+    if (!App::current) {
+        return false;
+    }
+    *normalizedX = (mouseX - App::current->viewport.x) / App::current->viewport.width;
+    *normalizedY = (mouseY - App::current->viewport.y) / App::current->viewport.height;
     
     return !(*normalizedX < -0.1f || *normalizedX > 1.1f || *normalizedY < -0.1f || *normalizedY > 1.1f);
 }

@@ -4,24 +4,26 @@
 #include <XPLMGraphics.h>
 #include <XPLMUtilities.h>
 
-#include "appstate.h"
+#include "app.h"
 #include "config.h"
 
 Button::Button(float aWidth, float aHeight) : Image("") {
     callback = nullptr;
     relativeWidth = aWidth;
     relativeHeight = aHeight;
-    pixelsWidth = AppState::getInstance()->viewport.width * aWidth;
-    pixelsHeight = AppState::getInstance()->viewport.height * aHeight;
-    AppState::getInstance()->registerButton(this);
+    pixelsWidth = App::current->viewport.width * aWidth;
+    pixelsHeight = App::current->viewport.height * aHeight;
+    App::current->registerButton(this);
 }
 
 Button::Button(std::string filename) : Image(filename) {
-    AppState::getInstance()->registerButton(this);
+    App::current->registerButton(this);
 }
 
 void Button::destroy() {
-    AppState::getInstance()->unregisterButton(this);
+    if (App::current) {
+        App::current->unregisterButton(this);
+    }
     Image::destroy();
 }
 
@@ -30,14 +32,14 @@ bool Button::handleState(float normalizedX, float normalizedY, ButtonState state
         return false;
     }
 
-    float mouseX = AppState::getInstance()->viewport.width * normalizedX;
+    float mouseX = App::current->viewport.width * normalizedX;
     float halfWidth = displayWidth() / 2.0f;
-    float buttonX = AppState::getInstance()->viewport.width * x;
+    float buttonX = App::current->viewport.width * x;
 
     if (mouseX >= (buttonX - halfWidth) && mouseX <= (buttonX + halfWidth)) {
-        float mouseY = AppState::getInstance()->viewport.height * normalizedY;
+        float mouseY = App::current->viewport.height * normalizedY;
         float halfHeight = displayHeight() / 2.0f;
-        float buttonY = AppState::getInstance()->viewport.height * y;
+        float buttonY = App::current->viewport.height * y;
         if (mouseY >= (buttonY - halfHeight) && mouseY <= (buttonY + halfHeight)) {
             if (state == kButtonClick) {
                 if (callback) {
@@ -72,7 +74,7 @@ void Button::draw() {
                          0,
                          0);
 
-    const auto& viewport = AppState::getInstance()->viewport;
+    const auto& viewport = App::current->viewport;
     float width = displayWidth();
     float height = displayHeight();
     float x1 = viewport.x + viewport.width * x - width / 2.0f;
