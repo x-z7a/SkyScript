@@ -103,5 +103,9 @@ xcuserdata/
 /*.gcno
 **/xcshareddata/WorkspaceSettings.xcsettings
 
+### Apps ###
+apps/*/node_modules/
+apps/*/build/
+
 ### AI Files ###
 .claude/

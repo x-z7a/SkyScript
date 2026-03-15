@@ -10,12 +10,9 @@
 #include "dataref.h"
 #include "path.h"
 
-#include <algorithm>
-#include <cmath>
 #include <cstring>
 
 #include <XPLMDisplay.h>
-#include <XPLMGraphics.h>
 #include <XPLMMenus.h>
 #include <XPLMPlugin.h>
 #include <XPLMProcessing.h>
@@ -60,7 +57,6 @@ PLUGIN_API int XPluginStart(char * name, char * sig, char * desc)
     appsMenuId = XPLMCreateMenu("Apps", pluginMenuId, appsItem, menuAction, nullptr);
 
     XPLMAppendMenuItem(pluginMenuId, "Reload configuration", (void *)"ActionReloadConfig", 0);
-    XPLMAppendMenuItem(pluginMenuId, "About", (void *)"ActionAbout", 0);
 
     XPLMRegisterFlightLoopCallback(update, REFRESH_INTERVAL_SECONDS_SLOW, nullptr);
 
@@ -167,58 +163,7 @@ void menuAction(void* mRef, void* iRef) {
 
     if (!isAppPointer) {
         // It's a string action
-        if (strcmp((char *)iRef, "ActionAbout") == 0) {
-            int winLeft, winTop, winRight, winBot;
-            XPLMGetScreenBoundsGlobal(&winLeft, &winTop, &winRight, &winBot);
-            XPLMCreateWindow_t params;
-            float screenWidth = fabs(winLeft - winRight);
-            float screenHeight = fabs(winTop - winBot);
-            float width = 450.0f;
-            float height = 180.0f;
-
-            params.structSize = sizeof(params);
-            params.left = (int)(winLeft + (screenWidth - width) / 2);
-            params.right = params.left + width;
-            params.top = (int)(winTop - (screenHeight - height) / 2);
-            params.bottom = params.top - height;
-            params.visible = 1;
-            params.refcon = nullptr;
-            params.drawWindowFunc = [](XPLMWindowID inWindowID, void *drawingRef) {
-                XPLMSetGraphicsState(0, 0, 0, 0, 1, 0, 0);
-
-                int left, top, right, bottom;
-                XPLMGetWindowGeometry(inWindowID, &left, &top, &right, &bottom);
-                float color[] = {1.0f, 1.0f, 1.0f};
-
-                float x = left + 16.0f;
-                float y = top - 16.0f;
-                XPLMDrawString(color, x, y, const_cast<char *>(FRIENDLY_NAME), nullptr, xplmFont_Proportional);
-                y -= 16.0f;
-                XPLMDrawString(color, x, y, const_cast<char *>("Version " VERSION), nullptr, xplmFont_Proportional);
-                y -= 32.0f;
-                XPLMDrawString(color, x, y, const_cast<char *>("Standalone browser window for X-Plane."), nullptr, xplmFont_Proportional);
-                y -= 16.0f;
-                XPLMDrawString(color, x, y, const_cast<char *>("This software is licensed under the GNU General Public License, GPL-3.0"), nullptr, xplmFont_Proportional);
-                y -= 32.0f;
-                XPLMDrawString(color, x, y, const_cast<char *>("For updates, see github.com/x-z7a/skyscript-cef."), nullptr, xplmFont_Proportional);
-                y -= 16.0f;
-                XPLMDrawString(color, x, y, const_cast<char *>("Commands and datarefs use the skyscript/* namespace."), nullptr, xplmFont_Proportional);
-            };
-
-            params.handleMouseClickFunc = nullptr;
-            params.handleRightClickFunc = nullptr;
-            params.handleMouseWheelFunc = nullptr;
-            params.handleKeyFunc = nullptr;
-            params.handleCursorFunc = nullptr;
-            params.layer = xplm_WindowLayerFloatingWindows;
-            params.decorateAsFloatingWindow = xplm_WindowDecorationRoundRectangle;
-            XPLMWindowID aboutWindow = XPLMCreateWindowEx(&params);
-            XPLMSetWindowTitle(aboutWindow, FRIENDLY_NAME);
-            XPLMSetWindowPositioningMode(aboutWindow, Dataref::getInstance()->get<bool>("sim/graphics/VR/enabled") ? xplm_WindowVR : xplm_WindowPositionFree, -1);
-            XPLMBringWindowToFront(aboutWindow);
-            return;
-        }
-        else if (strcmp((char *)iRef, "ActionReloadConfig") == 0) {
+        if (strcmp((char *)iRef, "ActionReloadConfig") == 0) {
             AppState::getInstance()->loadConfig();
             return;
         }

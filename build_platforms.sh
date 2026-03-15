@@ -112,6 +112,13 @@ copy_artifact() {
 run_additional_copies() {
     if has_platform mac; then
         copy_artifact "build/dist/mac_x64/$PROJECT_NAME.xpl" "$MAC_PLUGIN_COPY_TARGET"
+
+        plugin_dir=$(dirname "$MAC_PLUGIN_COPY_TARGET")
+        if [ -d "build/dist/apps" ]; then
+            rm -rf "$plugin_dir/apps"
+            cp -r "build/dist/apps" "$plugin_dir/apps"
+            printf 'Copied apps -> %s/apps\n' "$plugin_dir"
+        fi
     fi
 }
 
@@ -244,6 +251,19 @@ for platform in $PLATFORMS; do
 done
 
 printf 'Building has finished.\n'
+
+# ---- Build apps (React/Node) ----
+if [ -d "apps" ]; then
+    for app_dir in apps/*/; do
+        if [ -f "${app_dir}package.json" ]; then
+            app_name=$(basename "$app_dir")
+            printf 'Building app: %s\n' "$app_name"
+            (cd "$app_dir" && npm install --silent && npm run build --silent)
+            printf 'App %s built successfully.\n' "$app_name"
+        fi
+    done
+fi
+
 printf 'Creating distribution bundle...\n'
 
 if [ -d "build/dist" ]; then
@@ -268,6 +288,22 @@ for platform in $AVAILABLE_PLATFORMS; do
 done
 
 cp -r assets build/dist
+
+# Bundle built apps
+if [ -d "apps" ]; then
+    mkdir -p build/dist/apps
+    for app_dir in apps/*/; do
+        app_name=$(basename "$app_dir")
+        if [ -d "${app_dir}build" ]; then
+            cp -r "${app_dir}build" "build/dist/apps/${app_name}"
+            # Copy manifest.yaml if present
+            if [ -f "${app_dir}manifest.yaml" ]; then
+                cp "${app_dir}manifest.yaml" "build/dist/apps/${app_name}/"
+            fi
+            printf 'Bundled app: %s\n' "$app_name"
+        fi
+    done
+fi
 
 if [ "$XPLANE_VERSION" -ge 12 ]; then
     cat > build/dist/skunkcrafts_updater.cfg <<EOF
