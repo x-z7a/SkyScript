@@ -28,13 +28,19 @@ skyscript-cef/
 The project is XP12-only and builds `arm64` on macOS.
 
 ```sh
-printf 'y\nmac\n12\nn\nn\n' | ./build_platforms.sh
+./build_platforms.sh mac
 ```
 
 Set a different SDK root if needed:
 
 ```sh
-XPLANE_SDK_ROOT=/path/to/SDK ./build_platforms.sh
+./build_platforms.sh --sdk-root /path/to/SDK mac
+```
+
+Build multiple platforms, clean first, and include extra packaged files:
+
+```sh
+./build_platforms.sh --platforms mac,win --clean --extra-files
 ```
 
 ## Runtime IDs

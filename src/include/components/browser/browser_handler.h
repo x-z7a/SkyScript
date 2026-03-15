@@ -31,7 +31,6 @@ class BrowserHandler : public CefClient,
         std::string *currentUrl;
         unsigned short windowWidth;
         unsigned short windowHeight;
-        void injectAddressBar(CefRefPtr<CefBrowser> browser);
         void overrideGeolocationAndNavigator(CefRefPtr<CefBrowser> browser);
 
     public:
