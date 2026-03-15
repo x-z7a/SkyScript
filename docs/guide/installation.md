@@ -2,7 +2,7 @@
 
 ## Download
 
-Download the latest release from the [GitHub Releases](https://github.com/x-z7a/skyscript-cef/releases) page. Choose the `.zip` file that matches your X-Plane version (e.g. `SkyScript-1.0.6-XP12.zip`).
+Download the latest release from the [GitHub Releases](https://github.com/x-z7a/skyscript/releases) page. Choose the `.zip` file that matches your X-Plane version (e.g. `SkyScript-1.0.6-XP12.zip`).
 
 ## Install the Plugin
 

@@ -398,7 +398,7 @@ jobs:
           fi
 
           # Generate skunkcrafts updater config
-          printf 'module|https://github.com/x-z7a/skyscript-cef\nname|SkyScript\nversion|%s\nlocked|false\ndisabled|false\nzone|custom\n' "$VERSION" \
+          printf 'module|https://github.com/x-z7a/skyscript\nname|SkyScript\nversion|%s\nlocked|false\ndisabled|false\nzone|custom\n' "$VERSION" \
             > dist/${PRODUCT_NAME}/skunkcrafts_updater.cfg
 
           cd dist

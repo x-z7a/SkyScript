@@ -12,7 +12,7 @@ SkyScript is an X-Plane 12 browser plugin that renders into a normal X-Plane flo
 Expected layout:
 
 ```txt
-skyscript-cef/
+skyscript/
 ├── lib
 │   └── mac_x64
 │       └── cef

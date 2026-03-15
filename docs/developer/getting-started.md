@@ -150,4 +150,4 @@ This compiles the plugin, builds all apps, and copies everything to the X-Plane 
 
 - Read the full [JavaScript API Reference](/developer/api) to learn about `setDataref` and `executeCommand`.
 - Check the [Manifest Reference](/developer/manifest) for options like `user_agent`, `framerate`, and `audio_muted`.
-- Look at the [Hello World source](https://github.com/x-z7a/skyscript-cef/tree/main/apps/hello-world) for a more complete example with polling, custom dataref input, and command execution.
+- Look at the [Hello World source](https://github.com/x-z7a/skyscript/tree/main/apps/hello-world) for a more complete example with polling, custom dataref input, and command execution.

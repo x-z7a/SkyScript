@@ -311,7 +311,7 @@ fi
 
 if [ "$XPLANE_VERSION" -ge 12 ]; then
     cat > build/dist/skunkcrafts_updater.cfg <<EOF
-module|https://github.com/x-z7a/skyscript-cef
+module|https://github.com/x-z7a/skyscript
 name|SkyScript
 version|$VERSION
 locked|false

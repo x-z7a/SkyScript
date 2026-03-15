@@ -3,10 +3,10 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'SkyScript',
   description: 'Browser plugin for X-Plane 12',
-  base: '/skyscript-cef/',
+  base: '/',
 
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/skyscript-cef/logo.svg' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
   ],
 
   themeConfig: {
@@ -38,7 +38,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/x-z7a/skyscript-cef' },
+      { icon: 'github', link: 'https://github.com/x-z7a/skyscript' },
     ],
 
     footer: {

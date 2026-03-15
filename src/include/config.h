@@ -27,7 +27,7 @@
 #define PRODUCT_NAME "SkyScript"
 #define FRIENDLY_NAME "SkyScript"
 #define VERSION "1.0.6"
-#define VERSION_CHECK_URL "https://api.github.com/repos/x-z7a/skyscript-cef/releases?per_page=1&page=1"
+#define VERSION_CHECK_URL "https://api.github.com/repos/x-z7a/skyscript/releases?per_page=1&page=1"
 #define ALL_PLUGINS_DIRECTORY "/Resources/plugins/"
 #define PLUGIN_DIRECTORY (ALL_PLUGINS_DIRECTORY PRODUCT_NAME)
 #define BUNDLE_ID "com.xz7a." PRODUCT_NAME

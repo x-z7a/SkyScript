@@ -20,7 +20,7 @@ function App() {
       </div>
 
       <div className="links">
-        <a href="https://github.com/x-z7a/skyscript-cef">
+        <a href="https://github.com/x-z7a/skyscript">
           GitHub Repository
         </a>
       </div>
