@@ -14,7 +14,6 @@
 #include <curl/curl.h>
 
 #include "browser.h"
-#include "INIReader.h"
 #include "config.h"
 #include "dataref.h"
 #include "json.hpp"
@@ -27,7 +26,6 @@ AppState::AppState() {
     remoteVersion = "";
     pluginInitialized = false;
     activeApp = nullptr;
-    globalConfig = App::defaultConfig();
 }
 
 AppState::~AppState() {
@@ -49,10 +47,6 @@ bool AppState::initialize() {
 
     Path::getInstance()->reloadPaths();
     if (Path::getInstance()->pluginDirectory.empty()) {
-        return false;
-    }
-
-    if (!loadConfig()) {
         return false;
     }
 
@@ -184,12 +178,12 @@ void AppState::scanApps() {
         std::string manifestPath = entry.path().string() + "/manifest.yaml";
         std::string indexPath = entry.path().string() + "/index.html";
 
-        AppConfiguration appConfig = globalConfig;
+        AppConfiguration appConfig = App::defaultConfig();
         std::string appName = folderName;
         bool appIsDefault = false;
 
         if (std::filesystem::exists(manifestPath)) {
-            appConfig = App::parseManifest(manifestPath, globalConfig);
+            appConfig = App::parseManifest(manifestPath, App::defaultConfig());
 
             // Parse name and default flag from manifest
             std::ifstream file(manifestPath);
@@ -282,8 +276,7 @@ void AppState::reload() {
     apps.clear();
     activeApp = nullptr;
 
-    // Reload config and rescan
-    loadConfig();
+    // Rescan apps
     scanApps();
 
     // Re-create global toggle command
@@ -319,84 +312,3 @@ void AppState::reload() {
     debug("Plugin reloaded. %zu app(s) discovered.\n", apps.size());
 }
 
-bool AppState::loadConfig() {
-    if (Path::getInstance()->pluginDirectory.empty()) {
-        return false;
-    }
-
-    std::string filename = Path::getInstance()->pluginDirectory + "/config.ini";
-
-    if (!fileExists(filename)) {
-        const char *defaultConfig = R"(# Browser window configuration file.
-# If you're having trouble with this file or missing parameters, delete it and restart X-Plane.
-# This file will then be recreated with default settings.
-[browser]
-homepage=https://www.google.com
-audio_muted=false
-# minimum_width: Ensures the browser width does not go below this value.
-# The height is adjusted proportionally to maintain the aspect ratio.
-# Leave empty to use the current window width.
-minimum_width=
-# scroll_speed: The speed/steps in which the browser scrolls.
-# The default value is 5. Increase to scroll faster.
-scroll_speed=
-# forced_language: The language code for the application.
-# Valid values: en-US, en-GB, nl-NL, fr-FR, etc.
-# Leave empty for default language.
-forced_language=
-# user_agent: The User-Agent header for the browser
-# Leave empty for the default Chrome UA.
-user_agent=
-# hide_addressbar: Whether the address bar should be hidden or not. Default is false.
-hide_addressbar=
-# framerate: The number of frames per second to render the browser. Saves CPU if set to a lower value.
-# The browser will still sleep / idle when able or not visible.
-# Leave empty for default framerate.
-framerate=
-
-)";
-
-        std::ofstream fileOutputHandle(filename);
-        if (fileOutputHandle.is_open()) {
-            fileOutputHandle << defaultConfig;
-            fileOutputHandle.close();
-            debug("Default config file written to %s\n", filename.c_str());
-        }
-        else {
-            debug("Failed to write default config file at %s\n", filename.c_str());
-        }
-    }
-
-    INIReader reader(filename);
-    if (reader.ParseError() != 0) {
-        debug("Could not read config file at path %s, file is malformed.\n", filename.c_str());
-        return false;
-    }
-
-    globalConfig.homepage = reader.Get("browser", "homepage", "https://www.google.com");
-    globalConfig.audio_muted = reader.GetBoolean("browser", "audio_muted", false);
-    globalConfig.minimum_width = reader.GetInteger("browser", "minimum_width", 0);
-    globalConfig.scroll_speed = reader.GetInteger("browser", "scroll_speed", 5);
-    globalConfig.forced_language = reader.Get("browser", "forced_language", "");
-    globalConfig.user_agent = reader.GetString("browser", "user_agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.2.5.0 Safari/537.36");
-    globalConfig.hide_addressbar = reader.GetBoolean("browser", "hide_addressbar", false);
-    globalConfig.framerate = reader.GetInteger("browser", "framerate", 25);
-
-#if DEBUG
-    globalConfig.debug_value_1 = reader.GetReal("debug", "debug_value_1", 0.0f);
-    globalConfig.debug_value_2 = reader.GetReal("debug", "debug_value_2", 0.0f);
-    globalConfig.debug_value_3 = reader.GetReal("debug", "debug_value_3", 0.0f);
-#endif
-
-    return true;
-}
-
-bool AppState::fileExists(std::string filename) {
-    std::ifstream fileExistsHandle(filename);
-    if (!fileExistsHandle.good()) {
-        return false;
-    }
-
-    fileExistsHandle.close();
-    return true;
-}

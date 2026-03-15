@@ -13,13 +13,11 @@ private:
     ~AppState();
     static AppState* instance;
     std::string remoteVersion;
-    bool fileExists(std::string filename);
 
 public:
     std::vector<App*> apps;
     App* activeApp;
     bool pluginInitialized = false;
-    AppConfiguration globalConfig;
     int defaultAppsStartIndex = 0;
 
     static AppState* getInstance();
@@ -29,7 +27,6 @@ public:
 
     void update();
 
-    bool loadConfig();
     void scanApps();
     void reload();
     App* findApp(const std::string& id);
