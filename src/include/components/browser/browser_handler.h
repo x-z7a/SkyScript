@@ -6,6 +6,8 @@
 #include <include/cef_client.h>
 #include <include/cef_version.h>
 
+class XplmBridge;
+
 struct PopupRect {
         int x, y, width, height;
 };
@@ -30,13 +32,14 @@ class BrowserHandler : public CefClient,
         bool needsFullDraw;
         std::string *currentUrl;
         struct AppConfiguration *appConfig;
+        XplmBridge *xplmBridge;
         unsigned short windowWidth;
         unsigned short windowHeight;
         void overrideGeolocationAndNavigator(CefRefPtr<CefBrowser> browser);
         void injectAddressBar(CefRefPtr<CefBrowser> browser);
 
     public:
-        BrowserHandler(int textureId, std::string *currentUrl, struct AppConfiguration *appConfig, unsigned short width, unsigned short height);
+        BrowserHandler(int textureId, std::string *currentUrl, struct AppConfiguration *appConfig, XplmBridge *xplmBridge, unsigned short width, unsigned short height);
         ~BrowserHandler();
 
         bool hasInputFocus;

@@ -10,6 +10,7 @@
 #include "browser_handler.h"
 
 class App;
+class XplmBridge;
 
 class Browser {
 private:
@@ -18,6 +19,7 @@ private:
     float offsetEnd;
     float lastGpsUpdateTime;
     Button *backButton;
+    XplmBridge *xplmBridge;
     CefRefPtr<BrowserHandler> handler;
     void allocateTexture();
     bool createBrowser();

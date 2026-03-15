@@ -1,0 +1,129 @@
+.hello-world {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 40px;
+  text-align: center;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 0.9rem;
+  color: #888;
+  margin-bottom: 32px;
+}
+
+.section {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.section h2 {
+  font-size: 1rem;
+  color: #6c9bff;
+  margin-bottom: 12px;
+}
+
+.dataref-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.dataref-row label {
+  font-size: 0.8rem;
+  color: #aaa;
+  min-width: 100px;
+}
+
+.dataref-row .value {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.85rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px 8px;
+  border-radius: 4px;
+  flex: 1;
+  min-height: 24px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+button {
+  background: #6c9bff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+button:hover {
+  background: #5a87e6;
+}
+
+button:disabled {
+  background: #444;
+  cursor: not-allowed;
+}
+
+.log {
+  margin-top: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.log-entry {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.75rem;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.log-entry.error {
+  color: #ff6b6b;
+}
+
+.log-entry.success {
+  color: #69db7c;
+}
+
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.input-row input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.input-row input:focus {
+  outline: none;
+  border-color: #6c9bff;
+}

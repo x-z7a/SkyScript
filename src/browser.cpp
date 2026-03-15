@@ -30,6 +30,7 @@
 #include "browser_handler.h"
 #include "config.h"
 #include "dataref.h"
+#include "xplm_bridge.h"
 #include "drawing.h"
 #include "notification.h"
 #include "path.h"
@@ -47,6 +48,7 @@ Browser::Browser() {
     offsetEnd = App::browserTopRatio;
     lastGpsUpdateTime = 0.0f;
     backButton = nullptr;
+    xplmBridge = new XplmBridge();
     handler = nullptr;
     currentUrl = "";
 }
@@ -167,6 +169,11 @@ void Browser::destroy() {
         backButton->destroy();
         backButton = nullptr;
     }
+
+    if (xplmBridge) {
+        delete xplmBridge;
+        xplmBridge = nullptr;
+    }
 }
 
 void Browser::visibilityWillChange(bool becomesVisible) {
@@ -186,6 +193,10 @@ void Browser::update() {
 
     if (handler && app->visible) {
         CefDoMessageLoopWork();
+    }
+
+    if (xplmBridge) {
+        xplmBridge->processPendingRequests();
     }
 
     if (backButton) {
@@ -520,7 +531,7 @@ bool Browser::createBrowser() {
     browser_settings.background_color = CefColorSetARGB(0xFF, 0xFF, 0xFF, 0xFF);
 
     const auto& viewport = app->viewport;
-    handler = CefRefPtr<BrowserHandler>(new BrowserHandler(textureId, &currentUrl, &app->config, viewport.browserWidth, viewport.browserHeight));
+    handler = CefRefPtr<BrowserHandler>(new BrowserHandler(textureId, &currentUrl, &app->config, xplmBridge, viewport.browserWidth, viewport.browserHeight));
 
     CefWindowInfo window_info;
 #if LIN

@@ -8,6 +8,7 @@
 #include "config.h"
 #include "notification.h"
 #include "path.h"
+#include "xplm_bridge.h"
 
 #include <cmath>
 #include <include/base/cef_callback.h>
@@ -24,13 +25,14 @@
 #include <XPLMProcessing.h>
 #include <XPLMUtilities.h>
 
-BrowserHandler::BrowserHandler(int aTextureId, std::string *aCurrentUrl, AppConfiguration *anAppConfig, unsigned short aWidth, unsigned short aHeight) {
+BrowserHandler::BrowserHandler(int aTextureId, std::string *aCurrentUrl, AppConfiguration *anAppConfig, XplmBridge *anXplmBridge, unsigned short aWidth, unsigned short aHeight) {
     textureId = aTextureId;
     popupRect = {0, 0, 0, 0};
     popupShown = false;
     needsFullDraw = true;
     currentUrl = aCurrentUrl;
     appConfig = anAppConfig;
+    xplmBridge = anXplmBridge;
     windowWidth = aWidth;
     windowHeight = aHeight;
     cursorState = CursorDefault;
@@ -352,6 +354,12 @@ void BrowserHandler::OnDownloadUpdated(CefRefPtr<CefBrowser> browser, CefRefPtr<
 }
 
 cef_return_value_t BrowserHandler::OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, CefRefPtr<CefCallback> callback) {
+    std::string url = request->GetURL().ToString();
+    if (url.starts_with("skyscript://") && xplmBridge) {
+        xplmBridge->enqueueRequest(XplmBridge::parseRequestUrl(url, browser));
+        return RV_CANCEL;
+    }
+
     CefRequest::HeaderMap headers;
     request->GetHeaderMap(headers);
     auto it = headers.find("User-Agent");
@@ -387,6 +395,11 @@ void BrowserHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame
 
     overrideGeolocationAndNavigator(browser);
     injectAddressBar(browser);
+
+    if (xplmBridge) {
+        browser->GetMainFrame()->ExecuteJavaScript(
+            XplmBridge::getInjectionScript(), browser->GetMainFrame()->GetURL(), 0);
+    }
 }
 
 void BrowserHandler::overrideGeolocationAndNavigator(CefRefPtr<CefBrowser> browser) {
