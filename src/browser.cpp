@@ -296,7 +296,6 @@ bool Browser::click(XPLMMouseStatus status, float normalizedX, float normalizedY
     if (mouseEvent.y < 0) {
         return false;
     }
-    debug("Mouse click at normalized coordinates (%.2f, %.2f) with status %d\n", normalizedX, normalizedY, status);
 
     if (status == xplm_MouseDown) {
         handler->browserInstance->GetHost()->SendMouseClickEvent(mouseEvent, MBT_LEFT, false, 1);
