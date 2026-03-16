@@ -355,11 +355,11 @@ jobs:
             fi
           done
 
-      - name: Read version from config.h
+      - name: Determine version from git tag
         id: version
         run: |
-          VERSION=$(grep '#define VERSION ' src/include/config.h | cut -d '"' -f 2)
           TAG=${GITHUB_REF##*/}
+          VERSION="${TAG#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
