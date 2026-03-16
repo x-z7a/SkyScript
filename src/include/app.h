@@ -76,6 +76,7 @@ public:
     WindowViewport viewport;
     AppConfiguration config;
     bool visible;
+    bool mouseDown;
     Browser *browser;
     CursorType activeCursor;
 

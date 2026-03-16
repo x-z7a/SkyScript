@@ -39,6 +39,7 @@ App::App(const std::string& aName, const std::string& anId, AppType aType, const
     notification = nullptr;
     window = nullptr;
     visible = false;
+    mouseDown = false;
     browser = nullptr;
     activeCursor = CursorDefault;
     brightness = 1.0f;
@@ -364,11 +365,19 @@ void App::registerWindow() {
             return 1;
         }
 
+        if (status == xplm_MouseDown) {
+            app->mouseDown = true;
+        }
+        else if (status == xplm_MouseUp) {
+            app->mouseDown = false;
+        }
+
         if (app->browser->click(status, mouseX, mouseY)) {
             App::current = nullptr;
             return 1;
         }
 
+        app->mouseDown = false;
         app->browser->setFocus(false);
         App::current = nullptr;
         return 0;
@@ -428,7 +437,9 @@ void App::registerWindow() {
             return xplm_CursorDefault;
         }
 
-        app->browser->mouseMove(mouseX, mouseY);
+        if (!app->mouseDown) {
+            app->browser->mouseMove(mouseX, mouseY);
+        }
 
         bool isVREnabled = Dataref::getInstance()->getCached<int>("sim/graphics/VR/enabled");
         if (isVREnabled) {
