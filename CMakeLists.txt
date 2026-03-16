@@ -198,4 +198,38 @@ FUNCTION(add_xplane_plugin library_name library_version src_dir)
     TARGET_INCLUDE_DIRECTORIES(${library_name} PRIVATE ${header_dir_list})
 ENDFUNCTION()
 
+# Derive version from git tags
+EXECUTE_PROCESS(
+    COMMAND git describe --tags --match "v*" --exact-match
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE GIT_TAG
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE GIT_TAG_RESULT
+)
+
+IF(GIT_TAG_RESULT EQUAL 0)
+    # On an exact tag like "v1.0.6" -> "1.0.6"
+    STRING(REGEX REPLACE "^v" "" GIT_VERSION "${GIT_TAG}")
+ELSE()
+    # Not on an exact tag: use latest tag + "-dev"
+    EXECUTE_PROCESS(
+        COMMAND git describe --tags --match "v*" --abbrev=0
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE GIT_LATEST_TAG
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE GIT_LATEST_TAG_RESULT
+    )
+    IF(GIT_LATEST_TAG_RESULT EQUAL 0)
+        STRING(REGEX REPLACE "^v" "" GIT_VERSION "${GIT_LATEST_TAG}")
+        SET(GIT_VERSION "${GIT_VERSION}-dev")
+    ELSE()
+        SET(GIT_VERSION "0.0.0-dev")
+    ENDIF()
+ENDIF()
+
+MESSAGE(STATUS "SkyScript version: ${GIT_VERSION}")
+
 add_xplane_plugin(SkyScript 420 "${CMAKE_CURRENT_SOURCE_DIR}/src")
+TARGET_COMPILE_DEFINITIONS(SkyScript PRIVATE SKYSCRIPT_VERSION="${GIT_VERSION}")

@@ -26,7 +26,11 @@
 
 #define PRODUCT_NAME "SkyScript"
 #define FRIENDLY_NAME "SkyScript"
-#define VERSION "1.0.6"
+#ifdef SKYSCRIPT_VERSION
+#define VERSION SKYSCRIPT_VERSION
+#else
+#define VERSION "0.0.0-dev"
+#endif
 #define VERSION_CHECK_URL "https://api.github.com/repos/x-z7a/skyscript/releases?per_page=1&page=1"
 #define ALL_PLUGINS_DIRECTORY "/Resources/plugins/"
 #define PLUGIN_DIRECTORY (ALL_PLUGINS_DIRECTORY PRODUCT_NAME)
