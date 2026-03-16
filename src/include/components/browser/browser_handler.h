@@ -33,13 +33,14 @@ class BrowserHandler : public CefClient,
         std::string *currentUrl;
         struct AppConfiguration *appConfig;
         XplmBridge *xplmBridge;
+        std::string appName;
         unsigned short windowWidth;
         unsigned short windowHeight;
         void overrideGeolocationAndNavigator(CefRefPtr<CefBrowser> browser);
         void injectAddressBar(CefRefPtr<CefBrowser> browser);
 
     public:
-        BrowserHandler(int textureId, std::string *currentUrl, struct AppConfiguration *appConfig, XplmBridge *xplmBridge, unsigned short width, unsigned short height);
+        BrowserHandler(int textureId, std::string *currentUrl, struct AppConfiguration *appConfig, XplmBridge *xplmBridge, const std::string &appName, unsigned short width, unsigned short height);
         ~BrowserHandler();
 
         bool hasInputFocus;
@@ -97,6 +98,7 @@ class BrowserHandler : public CefClient,
         void OnPopupSize(CefRefPtr<CefBrowser> browser, const CefRect &rect) override;
         void GetViewRect(CefRefPtr<CefBrowser> browser, CefRect &rect) override;
         void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString &title) override;
+        bool OnConsoleMessage(CefRefPtr<CefBrowser> browser, cef_log_severity_t level, const CefString &message, const CefString &source, int line) override;
         void OnPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList &dirtyRects, const void *buffer, int width, int height) override;
         void OnVirtualKeyboardRequested(CefRefPtr<CefBrowser> browser, TextInputMode input_mode) override;
         bool OnCursorChange(CefRefPtr<CefBrowser> browser, CefCursorHandle cursor, cef_cursor_type_t type, const CefCursorInfo &custom_cursor_info) override;

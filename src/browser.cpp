@@ -523,7 +523,7 @@ bool Browser::createBrowser() {
     browser_settings.background_color = CefColorSetARGB(0xFF, 0xFF, 0xFF, 0xFF);
 
     const auto &viewport = app->viewport;
-    handler = CefRefPtr<BrowserHandler>(new BrowserHandler(textureId, &currentUrl, &app->config, xplmBridge, viewport.browserWidth, viewport.browserHeight));
+    handler = CefRefPtr<BrowserHandler>(new BrowserHandler(textureId, &currentUrl, &app->config, xplmBridge, app->name, viewport.browserWidth, viewport.browserHeight));
 
     CefWindowInfo window_info;
 #if LIN

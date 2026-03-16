@@ -181,6 +181,8 @@ std::string XplmBridge::getInjectionScript() {
     if (window.skyscript && window.skyscript.xplm) return;
 
     window.skyscript = window.skyscript || {};
+    window.skyscript.version = ')" VERSION R"(';
+    window.skyscript.xplaneVersion = ')" + std::to_string(XPLANE_VERSION) + R"(';
     window.skyscript._callbacks = window.skyscript._callbacks || {};
     window.skyscript._nextId = window.skyscript._nextId || 1;
 

@@ -23,6 +23,9 @@ framerate: 20
 | `scroll_speed` | integer | `5` | Scroll sensitivity multiplier. |
 | `user_agent` | string | *(default Chrome UA)* | Custom `User-Agent` header sent with every request. |
 | `forced_language` | string | *(auto-detected)* | Override the browser language. Format: `en-US,en` or `fr-FR,fr`. |
+| `width` | integer | `1024` | Initial window width in pixels. |
+| `height` | integer | `768` | Initial window height in pixels. |
+| `console_logging` | boolean | `true` | Forward `console.log`/`warn`/`error` to X-Plane's `Log.txt`. Set to `false` for noisy apps. |
 | `default` | boolean | `false` | Default apps appear after a separator in the menu. Used for built-in apps like "About SkyScript". |
 
 ## Minimal Manifests

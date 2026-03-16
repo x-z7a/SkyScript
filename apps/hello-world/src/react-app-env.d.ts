@@ -7,6 +7,8 @@ interface SkyscriptXplm {
 }
 
 interface Skyscript {
+  version: string;
+  xplaneVersion: string;
   xplm: SkyscriptXplm;
   _resolve(id: number, value: any): void;
   _reject(id: number, error: string): void;

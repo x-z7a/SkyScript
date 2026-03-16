@@ -3,3 +3,4 @@ url: https://charts.navigraph.com
 hide_addressbar: true
 width: 1024
 height: 768
+console_logging: false

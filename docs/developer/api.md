@@ -111,6 +111,19 @@ await skyscript.xplm.executeCommand('sim/GPS/g1000n1_hdg_sync');
 
 ---
 
+## Console Logging
+
+All `console.log()`, `console.warn()`, and `console.error()` calls from your app are forwarded to X-Plane's developer console (`Log.txt`). Messages are prefixed with the app name:
+
+```
+[SkyScript] [My App] [LOG] Hello from my app (http://localhost/index.js:42)
+[SkyScript] [My App] [ERROR] Something went wrong (http://localhost/index.js:55)
+```
+
+This makes it easy to debug your app without needing browser DevTools.
+
+---
+
 ## How It Works
 
 Understanding the communication flow helps when debugging:
@@ -138,6 +151,8 @@ interface SkyscriptXplm {
 
 interface Window {
   skyscript: {
+    version: string;
+    xplaneVersion: string;
     xplm: SkyscriptXplm;
   };
 }

@@ -492,6 +492,7 @@ AppConfiguration App::defaultConfig() {
     config.framerate = 25;
     config.width = 0;
     config.height = 0;
+    config.console_logging = true;
 #if DEBUG
     config.debug_value_1 = 0.0f;
     config.debug_value_2 = 0.0f;
@@ -594,6 +595,9 @@ AppConfiguration App::parseManifest(const std::string& manifestPath, const AppCo
             if (!value.empty()) {
                 config.height = std::stoi(value);
             }
+        }
+        else if (key == "console_logging") {
+            config.console_logging = (value != "false" && value != "0");
         }
     }
 

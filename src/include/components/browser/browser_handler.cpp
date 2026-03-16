@@ -25,7 +25,7 @@
 #include <XPLMProcessing.h>
 #include <XPLMUtilities.h>
 
-BrowserHandler::BrowserHandler(int aTextureId, std::string *aCurrentUrl, AppConfiguration *anAppConfig, XplmBridge *anXplmBridge, unsigned short aWidth, unsigned short aHeight) {
+BrowserHandler::BrowserHandler(int aTextureId, std::string *aCurrentUrl, AppConfiguration *anAppConfig, XplmBridge *anXplmBridge, const std::string &anAppName, unsigned short aWidth, unsigned short aHeight) {
     textureId = aTextureId;
     popupRect = {0, 0, 0, 0};
     popupShown = false;
@@ -33,6 +33,7 @@ BrowserHandler::BrowserHandler(int aTextureId, std::string *aCurrentUrl, AppConf
     currentUrl = aCurrentUrl;
     appConfig = anAppConfig;
     xplmBridge = anXplmBridge;
+    appName = anAppName;
     windowWidth = aWidth;
     windowHeight = aHeight;
     cursorState = CursorDefault;
@@ -109,6 +110,22 @@ void BrowserHandler::GetViewRect(CefRefPtr<CefBrowser> browser, CefRect &rect) {
 void BrowserHandler::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString &title) {
     (void)browser;
     (void)title;
+}
+
+bool BrowserHandler::OnConsoleMessage(CefRefPtr<CefBrowser> browser, cef_log_severity_t level, const CefString &message, const CefString &source, int line) {
+    if (!appConfig || !appConfig->console_logging) {
+        return false;
+    }
+
+    const char *levelStr = "LOG";
+    if (level == LOGSEVERITY_WARNING) {
+        levelStr = "WARN";
+    } else if (level >= LOGSEVERITY_ERROR) {
+        levelStr = "ERROR";
+    }
+
+    debug("[%s] [%s] %s (%s:%d)\n", appName.c_str(), levelStr, message.ToString().c_str(), source.ToString().c_str(), line);
+    return false;
 }
 
 void BrowserHandler::OnPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList &dirtyRects, const void *buffer, int width, int height) {

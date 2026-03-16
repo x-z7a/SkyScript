@@ -1,13 +1,24 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 
-const VERSION = '1.0.6';
-
 function App() {
+  const [version, setVersion] = useState('--');
+
+  useEffect(() => {
+    const check = () => {
+      if (window.skyscript?.version) {
+        setVersion(window.skyscript.version);
+      }
+    };
+    check();
+    const id = setInterval(check, 500);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <div className="about">
       <h1>SkyScript</h1>
-      <p className="version">Version {VERSION}</p>
+      <p className="version">Version {version}</p>
 
       <div className="description">
         <p>Standalone browser window for X-Plane.</p>

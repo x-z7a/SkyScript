@@ -37,6 +37,7 @@ struct AppConfiguration {
     unsigned char framerate;
     unsigned short width;
     unsigned short height;
+    bool console_logging;
 #if DEBUG
     float debug_value_1;
     float debug_value_2;
