@@ -39,4 +39,5 @@ echo "New version: $new_version"
 # create a new git tag for the new version
 git tag -a "$new_version" -m "Release version $new_version"
 # push the new tag to the remote repository
+git push
 git push origin "$new_version"  
