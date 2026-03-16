@@ -42,7 +42,9 @@ App::App(const std::string& aName, const std::string& anId, AppType aType, const
     browser = nullptr;
     activeCursor = CursorDefault;
     brightness = 1.0f;
-    viewport = {0, 0, defaultWindowWidth, defaultWindowHeight, 0, 0, 0, 0};
+    unsigned short initWidth = config.width > 0 ? config.width : defaultWindowWidth;
+    unsigned short initHeight = config.height > 0 ? config.height : defaultWindowHeight;
+    viewport = {0, 0, initWidth, initHeight, 0, 0, 0, 0};
 }
 
 App::~App() {
@@ -52,7 +54,9 @@ App::~App() {
 void App::initialize() {
     App::current = this;
 
-    setViewport(0, 0, defaultWindowWidth, defaultWindowHeight);
+    unsigned short initWidth = config.width > 0 ? config.width : defaultWindowWidth;
+    unsigned short initHeight = config.height > 0 ? config.height : defaultWindowHeight;
+    setViewport(0, 0, initWidth, initHeight);
 
     if (!browser) {
         browser = new Browser();
@@ -322,8 +326,8 @@ void App::registerWindow() {
 
     float screenWidth = fabs(winLeft - winRight);
     float screenHeight = fabs(winTop - winBot);
-    int width = defaultWindowWidth;
-    int height = defaultWindowHeight;
+    int width = config.width > 0 ? config.width : defaultWindowWidth;
+    int height = config.height > 0 ? config.height : defaultWindowHeight;
 
     XPLMCreateWindow_t params;
     params.structSize = sizeof(params);
@@ -475,6 +479,8 @@ AppConfiguration App::defaultConfig() {
     config.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.2.5.0 Safari/537.36";
     config.hide_addressbar = false;
     config.framerate = 25;
+    config.width = 0;
+    config.height = 0;
 #if DEBUG
     config.debug_value_1 = 0.0f;
     config.debug_value_2 = 0.0f;
@@ -566,6 +572,16 @@ AppConfiguration App::parseManifest(const std::string& manifestPath, const AppCo
         else if (key == "user_agent") {
             if (!value.empty()) {
                 config.user_agent = value;
+            }
+        }
+        else if (key == "width") {
+            if (!value.empty()) {
+                config.width = std::stoi(value);
+            }
+        }
+        else if (key == "height") {
+            if (!value.empty()) {
+                config.height = std::stoi(value);
             }
         }
     }

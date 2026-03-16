@@ -35,6 +35,8 @@ struct AppConfiguration {
     std::string user_agent;
     bool hide_addressbar;
     unsigned char framerate;
+    unsigned short width;
+    unsigned short height;
 #if DEBUG
     float debug_value_1;
     float debug_value_2;

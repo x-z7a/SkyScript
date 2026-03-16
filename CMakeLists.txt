@@ -20,7 +20,7 @@ IF(NOT XPLANE_VERSION EQUAL 12)
     MESSAGE(FATAL_ERROR "SkyScript only supports X-Plane 12 builds")
 ENDIF()
 
-SET(DEFAULT_XPLANE_SDK_ROOT "/Volumes/storage/git/SkyScript/SDK")
+SET(DEFAULT_XPLANE_SDK_ROOT "/Volumes/storage/git/SDK")
 SET(XPLANE_SDK_ROOT "${DEFAULT_XPLANE_SDK_ROOT}" CACHE PATH "Path to the X-Plane SDK root")
 SET(XPLANE_INCLUDES_PATH "${XPLANE_SDK_ROOT}/CHeaders")
 

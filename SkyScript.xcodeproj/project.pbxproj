@@ -70,8 +70,8 @@
 		F6AF9EC52D078DB000530297 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
 		F6AF9ECA2D078ED400530297 /* appstate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = appstate.h; sourceTree = "<group>"; };
 		F6AF9ECB2D078ED400530297 /* appstate.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = appstate.cpp; sourceTree = "<group>"; };
-		F6C242F72F17AA0100B42F05 /* XPLM.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XPLM.framework; path = /Volumes/storage/git/SkyScript/SDK/Libraries/Mac/XPLM.framework; sourceTree = "<absolute>"; };
-		F6C242F82F17AA0100B42F05 /* XPWidgets.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XPWidgets.framework; path = /Volumes/storage/git/SkyScript/SDK/Libraries/Mac/XPWidgets.framework; sourceTree = "<absolute>"; };
+		F6C242F72F17AA0100B42F05 /* XPLM.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XPLM.framework; path = /Volumes/storage/git/SDK/Libraries/Mac/XPLM.framework; sourceTree = "<absolute>"; };
+		F6C242F82F17AA0100B42F05 /* XPWidgets.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XPWidgets.framework; path = /Volumes/storage/git/SDK/Libraries/Mac/XPWidgets.framework; sourceTree = "<absolute>"; };
 		F6D247C02D2FC4DB00C55144 /* cursor_linux.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = cursor_linux.cpp; sourceTree = "<group>"; };
 		F6D247C22D2FC4DB00C55144 /* cursor_mac.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = cursor_mac.mm; sourceTree = "<group>"; };
 		F6D247C42D2FC4DB00C55144 /* cursor_win.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = cursor_win.cpp; sourceTree = "<group>"; };
@@ -424,7 +424,7 @@
 					"-Wl,_XPluginStop",
 				);
 				PRODUCT_NAME = "${TARGET_NAME}";
-				XPSDK_ROOT = /Volumes/storage/git/SkyScript/SDK;
+				XPSDK_ROOT = /Volumes/storage/git/SDK;
 			};
 			name = Debug;
 		};
@@ -503,7 +503,7 @@
 					"-Wl,_XPluginStop",
 				);
 				PRODUCT_NAME = "${TARGET_NAME}";
-				XPSDK_ROOT = /Volumes/storage/git/SkyScript/SDK;
+				XPSDK_ROOT = /Volumes/storage/git/SDK;
 			};
 			name = Release;
 		};
@@ -556,7 +556,7 @@
 				);
 				SUPPORTED_PLATFORMS = "xrsimulator xros watchsimulator watchos macosx iphonesimulator iphoneos driverkit appletvsimulator appletvos";
 				SUPPORTS_MACCATALYST = YES;
-				XPSDK_ROOT = /Volumes/storage/git/SkyScript/SDK;
+				XPSDK_ROOT = /Volumes/storage/git/SDK;
 			};
 			name = Debug;
 		};
@@ -608,7 +608,7 @@
 				);
 				SUPPORTED_PLATFORMS = "xrsimulator xros watchsimulator watchos macosx iphonesimulator iphoneos driverkit appletvsimulator appletvos";
 				SUPPORTS_MACCATALYST = YES;
-				XPSDK_ROOT = /Volumes/storage/git/SkyScript/SDK;
+				XPSDK_ROOT = /Volumes/storage/git/SDK;
 			};
 			name = Release;
 		};

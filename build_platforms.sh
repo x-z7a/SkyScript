@@ -3,7 +3,7 @@
 set -eu
 
 AVAILABLE_PLATFORMS="mac win lin"
-DEFAULT_XPLANE_SDK_ROOT="/Volumes/storage/git/SkyScript/SDK"
+DEFAULT_XPLANE_SDK_ROOT="/Volumes/storage/git/SDK"
 MAC_PLUGIN_COPY_TARGET="/Volumes/storage/X-Plane 12/Resources/plugins/SkyScript/mac.xpl"
 PROJECT_NAME=$(sed -n 's/^#define PRODUCT_NAME "\(.*\)"/\1/p' src/include/config.h | head -n 1)
 VERSION=$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/include/config.h | head -n 1)

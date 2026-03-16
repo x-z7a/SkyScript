@@ -4,7 +4,7 @@ SkyScript is an X-Plane 12 browser plugin that renders into a normal X-Plane flo
 
 ## Requirements
 
-- X-Plane SDK 4.2.0 at `/Volumes/storage/git/SkyScript/SDK`
+- X-Plane SDK 4.2.0 at `/Volumes/storage/git/SDK`
 - CEF tree under `lib/mac_x64/cef`
 - `lib/mac_x64/cef/Release/Chromium Embedded Framework.framework`
 - `lib/mac_x64/cef/libcef_dll_wrapper.a`
