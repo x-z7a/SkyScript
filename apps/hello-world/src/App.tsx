@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import './App.css';
 
 interface LogEntry {
@@ -17,6 +17,12 @@ function App() {
   const [polling, setPolling] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const logId = useRef(0);
+  const [bgSeconds, setBgSeconds] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setBgSeconds(s => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const addLog = useCallback((text: string, type: LogEntry['type'] = 'info') => {
     setLogs(prev => [{ id: logId.current++, text, type }, ...prev].slice(0, 50));
@@ -94,6 +100,7 @@ function App() {
     <div className="hello-world">
       <h1>Hello World</h1>
       <p className="subtitle">SkyScript XPLM Bridge Test</p>
+      <p className="subtitle">Background timer: {bgSeconds}s</p>
 
       <div className="section">
         <h2>Live Datarefs</h2>

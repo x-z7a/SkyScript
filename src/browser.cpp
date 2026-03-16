@@ -1,18 +1,18 @@
 #include "browser.h"
 
-#include <chrono>
+#include "app.h"
+#include "browser_handler.h"
+#include "config.h"
+#include "dataref.h"
+#include "drawing.h"
+#include "notification.h"
+#include "path.h"
+#include "xplm_bridge.h"
+
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
-#include <iomanip>
-#include <limits>
-#include <sstream>
-#include <vector>
-
-#include <XPLMDisplay.h>
-#include <XPLMGraphics.h>
-#include <XPLMProcessing.h>
-#include <XPLMUtilities.h>
 #include <include/base/cef_bind.h>
 #include <include/base/cef_callback.h>
 #include <include/cef_app.h>
@@ -25,18 +25,18 @@
 #include <include/cef_version.h>
 #include <include/wrapper/cef_closure_task.h>
 #include <include/wrapper/cef_helpers.h>
-
-#include "app.h"
-#include "browser_handler.h"
-#include "config.h"
-#include "dataref.h"
-#include "xplm_bridge.h"
-#include "drawing.h"
-#include "notification.h"
-#include "path.h"
+#include <iomanip>
+#include <limits>
+#include <sstream>
+#include <vector>
+#include <XPLMDisplay.h>
+#include <XPLMGraphics.h>
+#include <XPLMProcessing.h>
+#include <XPLMUtilities.h>
 
 #if APL
 #include "unix_keycodes.h"
+
 #include <include/wrapper/cef_library_loader.h>
 #elif LIN
 #include "unix_keycodes.h"
@@ -58,7 +58,7 @@ void Browser::initialize() {
         return;
     }
 
-    App* app = App::current;
+    App *app = App::current;
 
     offsetStart = 0.0f;
     offsetEnd = App::browserTopRatio;
@@ -106,6 +106,8 @@ void Browser::initialize() {
             handler->browserInstance->Reload();
         }
     });
+
+    createBrowser();
 }
 
 void Browser::allocateTexture() {
@@ -115,22 +117,21 @@ void Browser::allocateTexture() {
 
     XPLMBindTexture2d(textureId, 0);
 
-    const auto& viewport = App::current->viewport;
+    const auto &viewport = App::current->viewport;
     std::vector<unsigned char> whiteTextureData(
         viewport.textureWidth * viewport.textureHeight * WindowViewport::bytesPerPixel,
-        0xFF
-    );
+        0xFF);
 
     glTexImage2D(
-                 GL_TEXTURE_2D,
-                 0,
-                 GL_RGBA,
-                 viewport.textureWidth,
-                 viewport.textureHeight,
-                 0,
-                 GL_BGRA,
-                 GL_UNSIGNED_BYTE,
-                 whiteTextureData.data());
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA,
+        viewport.textureWidth,
+        viewport.textureHeight,
+        0,
+        GL_BGRA,
+        GL_UNSIGNED_BYTE,
+        whiteTextureData.data());
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -148,8 +149,7 @@ void Browser::destroy() {
 
                 if (!handler->browserInstance && startTime > std::chrono::steady_clock::now()) {
                     startTime = std::chrono::steady_clock::now();
-                }
-                else if (std::chrono::steady_clock::now() - startTime > gracePeriod) {
+                } else if (std::chrono::steady_clock::now() - startTime > gracePeriod) {
                     break;
                 }
             }
@@ -161,7 +161,7 @@ void Browser::destroy() {
 
     if (textureId) {
         XPLMBindTexture2d(textureId, 0);
-        glDeleteTextures(1, (GLuint *)&textureId);
+        glDeleteTextures(1, (GLuint *) &textureId);
         textureId = 0;
     }
 
@@ -177,10 +177,6 @@ void Browser::destroy() {
 }
 
 void Browser::visibilityWillChange(bool becomesVisible) {
-    if (becomesVisible && !handler) {
-        createBrowser();
-    }
-
     lastGpsUpdateTime = becomesVisible ? XPLMGetElapsedTime() : 0.0f;
 }
 
@@ -189,9 +185,9 @@ void Browser::update() {
         return;
     }
 
-    App* app = App::current;
+    App *app = App::current;
 
-    if (handler && app->visible) {
+    if (handler) {
         CefDoMessageLoopWork();
     }
 
@@ -214,17 +210,17 @@ void Browser::draw() {
     }
 
     XPLMSetGraphicsState(
-                         0,
-                         1,
-                         0,
-                         0,
-                         1,
-                         0,
-                         0);
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0);
 
     XPLMBindTexture2d(textureId, 0);
 
-    const auto& viewport = App::current->viewport;
+    const auto &viewport = App::current->viewport;
     int x1 = viewport.x;
     int y1 = viewport.y + viewport.height * offsetStart;
     int x2 = x1 + viewport.width;
@@ -233,8 +229,8 @@ void Browser::draw() {
     glBegin(GL_QUADS);
     set_brightness(App::current->brightness);
 
-    float u = (float)viewport.browserWidth / viewport.textureWidth;
-    float v = (float)viewport.browserHeight / viewport.textureHeight;
+    float u = (float) viewport.browserWidth / viewport.textureWidth;
+    float v = (float) viewport.browserHeight / viewport.textureHeight;
 
     glTexCoord2f(0, v);
     glVertex2f(x1, y1);
@@ -262,7 +258,7 @@ void Browser::resize() {
         return;
     }
 
-    const auto& viewport = App::current->viewport;
+    const auto &viewport = App::current->viewport;
     handler->setViewSize(viewport.browserWidth, viewport.browserHeight);
     if (handler->browserInstance) {
         handler->browserInstance->GetHost()->WasResized();
@@ -299,12 +295,10 @@ bool Browser::click(XPLMMouseStatus status, float normalizedX, float normalizedY
 
     if (status == xplm_MouseDown) {
         handler->browserInstance->GetHost()->SendMouseClickEvent(mouseEvent, MBT_LEFT, false, 1);
-    }
-    else if (status == xplm_MouseDrag) {
+    } else if (status == xplm_MouseDrag) {
         mouseEvent.modifiers |= EVENTFLAG_LEFT_MOUSE_BUTTON;
         handler->browserInstance->GetHost()->SendMouseMoveEvent(mouseEvent, false);
-    }
-    else {
+    } else {
         handler->browserInstance->GetHost()->SendMouseClickEvent(mouseEvent, MBT_LEFT, true, 1);
     }
 
@@ -367,7 +361,7 @@ void Browser::key(unsigned char key, unsigned char virtualKey, XPLMKeyFlags flag
 
 #if IBM
     wchar_t utf16Character;
-    MultiByteToWideChar(CP_UTF8, 0, (char*)&key, 1, &utf16Character, 1);
+    MultiByteToWideChar(CP_UTF8, 0, (char *) &key, 1, &utf16Character, 1);
     keyEvent.windows_key_code = virtualKey;
     keyEvent.native_key_code = MapVirtualKey(virtualKey, MAPVK_VK_TO_VSC);
     keyEvent.character = utf16Character;
@@ -377,8 +371,7 @@ void Browser::key(unsigned char key, unsigned char virtualKey, XPLMKeyFlags flag
     if (it != virtualKeycodeToUnixKeycode.end()) {
         int keyCode = it->second;
         keyEvent.native_key_code = keyCode;
-    }
-    else {
+    } else {
         debug("Unknown key: 0x%02X VK: 0x%02X\n", key, virtualKey);
         keyEvent.native_key_code = key;
     }
@@ -405,14 +398,12 @@ void Browser::key(unsigned char key, unsigned char virtualKey, XPLMKeyFlags flag
                 handler->browserInstance->GetMainFrame()->SelectAll();
             }
             return;
-        }
-        else if (key == 'c') {
+        } else if (key == 'c') {
             if (keyEvent.type == KEYEVENT_KEYDOWN) {
                 handler->browserInstance->GetMainFrame()->Copy();
             }
             return;
-        }
-        else if (key == 'v') {
+        } else if (key == 'v') {
             if (keyEvent.type == KEYEVENT_KEYDOWN) {
                 handler->browserInstance->GetMainFrame()->Paste();
             }
@@ -460,7 +451,7 @@ bool Browser::createBrowser() {
         return false;
     }
 
-    App* app = App::current;
+    App *app = App::current;
 
 #if APL
     CefScopedLibraryLoader library_loader;
@@ -531,7 +522,7 @@ bool Browser::createBrowser() {
     browser_settings.windowless_frame_rate = app->config.framerate;
     browser_settings.background_color = CefColorSetARGB(0xFF, 0xFF, 0xFF, 0xFF);
 
-    const auto& viewport = app->viewport;
+    const auto &viewport = app->viewport;
     handler = CefRefPtr<BrowserHandler>(new BrowserHandler(textureId, &currentUrl, &app->config, xplmBridge, viewport.browserWidth, viewport.browserHeight));
 
     CefWindowInfo window_info;
@@ -546,7 +537,7 @@ bool Browser::createBrowser() {
     if (!browserCreated) {
         app->showNotification(new Notification("Error creating browser", "An error occured while starting the browser.\nPlease verify if there are any updates for the " FRIENDLY_NAME " plugin and try again."));
     }
-
+    debug("Browser for app '%s' created: %d\n", app->id.c_str(), browserCreated);
     return true;
 }
 
@@ -585,14 +576,14 @@ void Browser::updateGPSLocation() {
     stream << "extra: { ";
     stream << "altitudeAgl: " << std::fixed << std::setprecision(0) << altitudeMetersAboveGroundLevel << ", ";
     stream << "airspeedKts: " << std::fixed << std::setprecision(0) << airspeedKts << ", ";
-    stream <<  "}, timestamp: Date.now() }; for (let key in window.skyscript_watchers) { window.skyscript_watchers[key](window.skyscript_location); }";
+    stream << "}, timestamp: Date.now() }; for (let key in window.skyscript_watchers) { window.skyscript_watchers[key](window.skyscript_location); }";
 
     handler->browserInstance->GetMainFrame()->ExecuteJavaScript(stream.str(), handler->browserInstance->GetMainFrame()->GetURL(), 0);
     lastGpsUpdateTime = XPLMGetElapsedTime();
 }
 
 CefMouseEvent Browser::getMouseEvent(float normalizedX, float normalizedY) {
-    const auto& viewport = App::current->viewport;
+    const auto &viewport = App::current->viewport;
 
     CefMouseEvent mouseEvent;
     mouseEvent.x = viewport.browserWidth * normalizedX;
