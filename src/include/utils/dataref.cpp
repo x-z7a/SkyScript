@@ -487,10 +487,15 @@ void Dataref::createCommand(const char *command, const char *description, Comman
     
     auto it = boundCommands.find(command);
     if (it != boundCommands.end()) {
-        XPLMUnregisterCommandHandler(handle, handleCommandCallback, 1, nullptr);
+        XPLMUnregisterCommandHandler(it->second.handle, handleCommandCallback, 1, nullptr);
     }
     
-    bindExistingCommand(command, callback);
+    boundCommands[command] = {
+        handle,
+        callback
+    };
+    
+    XPLMRegisterCommandHandler(handle, handleCommandCallback, 1, nullptr);
 }
 
 int Dataref::_commandCallback(XPLMCommandRef inCommand, XPLMCommandPhase inPhase, void *inRefcon) {
