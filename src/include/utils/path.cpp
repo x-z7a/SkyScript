@@ -10,6 +10,7 @@ Path* Path::instance = nullptr;
 Path::Path() {
     rootDirectory = "";
     pluginDirectory = "";
+    assetsDirectory = "";
     aircraftDirectory = "";
     aircraftFilename = "";
 }
@@ -52,6 +53,9 @@ void Path::reloadPaths() {
         debug("Warning: could not determine plugin directory from path, using fallback\n");
         pluginDirectory = rootDirectory + PLUGIN_DIRECTORY;
     }
+    if (assetsDirectory.empty()) {
+        assetsDirectory = pluginDirectory + "/assets";
+    }
     
     char filename[256];
     char modelPath[512];
@@ -75,6 +79,13 @@ void Path::reloadPaths() {
     else {
         aircraftDirectory = "";
         aircraftFilename = "";
+    }
+}
+
+void Path::setAssetsPath(const std::string& path) {
+    assetsDirectory = path;
+    if (assetsDirectory.ends_with("/")) {
+        assetsDirectory.pop_back();
     }
 }
 

@@ -312,9 +312,34 @@ for platform in $PLATFORMS; do
     fi
 done
 
+# Copy CEF wrapper library for each built platform
+for platform in $PLATFORMS; do
+    if [ "$platform" = "mac" ]; then
+        cef_wrapper="lib/mac_x64/cef/libcef_dll_wrapper.a"
+    elif [ "$platform" = "win" ]; then
+        cef_wrapper="lib/win_x64/cef/libcef_dll_wrapper/libcef_dll_wrapper.lib"
+        if [ ! -f "$cef_wrapper" ]; then
+            cef_wrapper="lib/win_x64/cef/libcef_dll_wrapper/libcef_dll_wrapper.a"
+        fi
+    else
+        cef_wrapper="lib/lin_x64/cef/libcef_dll_wrapper/libcef_dll_wrapper.a"
+    fi
+
+    if [ -f "$cef_wrapper" ]; then
+        mkdir -p "$LIB_DIST/lib/${platform}_x64"
+        cp "$cef_wrapper" "$LIB_DIST/lib/${platform}_x64/"
+        printf 'Bundled CEF wrapper: %s -> %s\n' "$cef_wrapper" "${platform}_x64"
+    else
+        printf 'Warning: CEF wrapper not found for %s at %s\n' "$platform" "$cef_wrapper"
+    fi
+done
+
 # Copy Go bindings
 cp go.mod "$LIB_DIST/"
 cp -r go "$LIB_DIST/"
+
+# Copy assets (icons, sounds, etc.) for consumers to bundle with their plugin
+cp -r assets "$LIB_DIST/"
 
 # ---- Example plugin distribution (.xpl + apps + assets + source + libs) ----
 EXAMPLE_DIST="build/dist/$PROJECT_NAME-example"

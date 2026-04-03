@@ -12,11 +12,13 @@ private:
 public:
     std::string rootDirectory;
     std::string pluginDirectory;
+    std::string assetsDirectory;
     std::string aircraftDirectory;
     std::string aircraftFilename;
     
     static Path* getInstance();
     void reloadPaths();
+    void setAssetsPath(const std::string& path);
 };
 
 #endif

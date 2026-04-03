@@ -28,6 +28,12 @@ void skyscript_shutdown(void) {
     SkyScript::shutdown();
 }
 
+void skyscript_set_assets_path(const char* path) {
+    if (path) {
+        SkyScript::setAssetsPath(path);
+    }
+}
+
 int skyscript_load_apps_from_directory(void) {
     return SkyScript::loadAppsFromDirectory() ? 1 : 0;
 }

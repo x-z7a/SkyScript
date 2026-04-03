@@ -180,6 +180,10 @@ void initialize() {
     });
 }
 
+void setAssetsPath(const std::string& path) {
+    Path::getInstance()->setAssetsPath(path);
+}
+
 void shutdown() {
     XPLMUnregisterFlightLoopCallback(flightLoopCallback, nullptr);
     destroyAllAppWindows();

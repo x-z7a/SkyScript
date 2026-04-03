@@ -29,6 +29,15 @@ func Initialize() {
 	C.skyscript_initialize()
 }
 
+// SetAssetsPath sets the base directory for SkyScript assets (icons, sounds, etc.).
+// If not called, defaults to <pluginDirectory>/assets.
+// Must be called after Initialize and before creating any app windows.
+func SetAssetsPath(path string) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+	C.skyscript_set_assets_path(cPath)
+}
+
 // Shutdown tears down the SkyScript library and unregisters the flight loop.
 // Call from XPluginStop.
 func Shutdown() {
