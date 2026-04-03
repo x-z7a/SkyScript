@@ -147,6 +147,7 @@ SkyScript automatically registers these X-Plane datarefs and commands:
 | `skyscript/toggle` | Command | Show/hide the last active app |
 | `skyscript/app-{id}/toggle` | Command | Show/hide a specific app |
 | `skyscript/app-{id}/refresh` | Command | Reload the page |
+| `skyscript/app-{id}/devtools` | Command | Toggle Chrome DevTools window for debugging |
 | `skyscript/app-{id}/visible` | Dataref (int) | `1` when visible |
 | `skyscript/app-{id}/url` | Dataref (string) | Current URL (writable) |
 

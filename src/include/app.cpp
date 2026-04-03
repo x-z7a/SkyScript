@@ -81,6 +81,16 @@ void App::initialize() {
         }
     });
 
+    Dataref::getInstance()->createCommand((datarefPrefix + "/devtools").c_str(), ("Toggle developer tools for " + name).c_str(), [this](XPLMCommandPhase inPhase) {
+        if (inPhase != xplm_CommandBegin) {
+            return;
+        }
+
+        if (browser) {
+            browser->showDevTools();
+        }
+    });
+
     App::current = nullptr;
 }
 
@@ -90,6 +100,7 @@ void App::deinitialize() {
     std::string datarefPrefix = "skyscript/" + id;
     Dataref::getInstance()->unbind((datarefPrefix + "/visible").c_str());
     Dataref::getInstance()->unbind((datarefPrefix + "/toggle").c_str());
+    Dataref::getInstance()->unbind((datarefPrefix + "/devtools").c_str());
     Dataref::getInstance()->unbind((datarefPrefix + "/url").c_str());
     Dataref::getInstance()->unbind((datarefPrefix + "/refresh").c_str());
 
