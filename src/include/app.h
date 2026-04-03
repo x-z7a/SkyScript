@@ -103,6 +103,12 @@ public:
     void showNotification(Notification *notification);
     void executeDelayed(CallbackFunc func, float delaySeconds);
 
+    // Register a handler for messages from JS on a given channel.
+    void onMessage(const std::string& channel, std::function<std::pair<std::string, std::string>(const std::string&)> handler);
+
+    // Push a message from the plugin to JS on a given channel.
+    void postMessageToJS(const std::string& channel, const std::string& payload);
+
     static AppConfiguration defaultConfig();
     static AppConfiguration parseManifest(const std::string& manifestPath, const AppConfiguration& defaults);
 };

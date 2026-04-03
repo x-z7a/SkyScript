@@ -66,6 +66,9 @@ void BrowserHandler::setViewSize(unsigned short width, unsigned short height) {
 
 void BrowserHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
     browserInstance = browser;
+    if (xplmBridge) {
+        xplmBridge->setBrowser(browser);
+    }
     if (App::current) {
         browserInstance->GetHost()->SetAudioMuted(App::current->config.audio_muted);
     }

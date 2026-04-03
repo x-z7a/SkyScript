@@ -295,6 +295,18 @@ void App::executeDelayed(CallbackFunc func, float delaySeconds) {
     });
 }
 
+void App::onMessage(const std::string& channel, std::function<std::pair<std::string, std::string>(const std::string&)> handler) {
+    if (browser) {
+        browser->onMessage(channel, handler);
+    }
+}
+
+void App::postMessageToJS(const std::string& channel, const std::string& payload) {
+    if (browser) {
+        browser->postMessage(channel, payload);
+    }
+}
+
 bool App::setViewport(int x, int y, unsigned short width, unsigned short height) {
     unsigned short safeWidth = (std::max<unsigned short>)(1, width);
     unsigned short safeHeight = (std::max<unsigned short>)(1, height);

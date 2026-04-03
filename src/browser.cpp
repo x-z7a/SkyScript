@@ -606,3 +606,15 @@ CefMouseEvent Browser::getMouseEvent(float normalizedX, float normalizedY) {
     mouseEvent.y = viewport.browserHeight * (1.0f - ((normalizedY - offsetStart) / (offsetEnd - offsetStart)));
     return mouseEvent;
 }
+
+void Browser::onMessage(const std::string& channel, MessageHandler handler) {
+    if (xplmBridge) {
+        xplmBridge->onMessage(channel, handler);
+    }
+}
+
+void Browser::postMessage(const std::string& channel, const std::string& payload) {
+    if (xplmBridge) {
+        xplmBridge->postMessage(channel, payload);
+    }
+}

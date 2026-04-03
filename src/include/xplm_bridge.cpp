@@ -1,7 +1,10 @@
 #include "xplm_bridge.h"
 #include "dataref.h"
 #include "config.h"
+#include "path.h"
 
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <include/cef_parser.h>
 #include <XPLMDataAccess.h>
@@ -25,6 +28,16 @@ void XplmBridge::processPendingRequests() {
             handleSetDataref(req);
         } else if (req.action == "executeCommand") {
             handleExecuteCommand(req);
+        } else if (req.action == "postMessage") {
+            handlePostMessage(req);
+        } else if (req.action == "fsReadFile") {
+            handleFsReadFile(req);
+        } else if (req.action == "fsWriteFile") {
+            handleFsWriteFile(req);
+        } else if (req.action == "fsListDir") {
+            handleFsListDir(req);
+        } else if (req.action == "fsExists") {
+            handleFsExists(req);
         } else {
             respond(req, "\"Unknown action: " + req.action + "\"", true);
         }
@@ -116,6 +129,171 @@ void XplmBridge::handleExecuteCommand(const XplmRequest& req) {
     respond(req, "undefined");
 }
 
+void XplmBridge::handlePostMessage(const XplmRequest& req) {
+    MessageHandler handler;
+    {
+        std::lock_guard<std::mutex> lock(handlersMutex);
+        auto it = messageHandlers.find(req.channel);
+        if (it == messageHandlers.end()) {
+            respond(req, "\"No handler registered for channel: " + escapeJsString(req.channel) + "\"", true);
+            return;
+        }
+        handler = it->second;
+    }
+
+    auto [response, error] = handler(req.payload);
+    if (!error.empty()) {
+        respond(req, "\"" + escapeJsString(error) + "\"", true);
+    } else {
+        // response is already a JSON value string (could be object, array, string, number, etc.)
+        respond(req, response);
+    }
+}
+
+void XplmBridge::handleFsReadFile(const XplmRequest& req) {
+    if (!isPathAllowed(req.ref)) {
+        respond(req, "\"Access denied: path is outside the plugin directory\"", true);
+        return;
+    }
+
+    if (!std::filesystem::exists(req.ref)) {
+        respond(req, "\"File not found: " + escapeJsString(req.ref) + "\"", true);
+        return;
+    }
+
+    std::ifstream file(req.ref, std::ios::binary);
+    if (!file.is_open()) {
+        respond(req, "\"Cannot open file: " + escapeJsString(req.ref) + "\"", true);
+        return;
+    }
+
+    std::ostringstream content;
+    content << file.rdbuf();
+    file.close();
+
+    respond(req, "\"" + escapeJsString(content.str()) + "\"");
+}
+
+void XplmBridge::handleFsWriteFile(const XplmRequest& req) {
+    if (!isPathAllowed(req.ref)) {
+        respond(req, "\"Access denied: path is outside the plugin directory\"", true);
+        return;
+    }
+
+    // Create parent directories if they don't exist
+    std::filesystem::path filePath(req.ref);
+    if (filePath.has_parent_path()) {
+        std::filesystem::create_directories(filePath.parent_path());
+    }
+
+    std::ofstream file(req.ref, std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) {
+        respond(req, "\"Cannot write file: " + escapeJsString(req.ref) + "\"", true);
+        return;
+    }
+
+    file << req.value;
+    file.close();
+
+    respond(req, "undefined");
+}
+
+void XplmBridge::handleFsListDir(const XplmRequest& req) {
+    if (!isPathAllowed(req.ref)) {
+        respond(req, "\"Access denied: path is outside the plugin directory\"", true);
+        return;
+    }
+
+    if (!std::filesystem::exists(req.ref) || !std::filesystem::is_directory(req.ref)) {
+        respond(req, "\"Directory not found: " + escapeJsString(req.ref) + "\"", true);
+        return;
+    }
+
+    std::ostringstream result;
+    result << "[";
+    bool first = true;
+    for (const auto& entry : std::filesystem::directory_iterator(req.ref)) {
+        if (!first) result << ",";
+        result << "\"" << escapeJsString(entry.path().filename().string()) << "\"";
+        first = false;
+    }
+    result << "]";
+
+    respond(req, result.str());
+}
+
+void XplmBridge::handleFsExists(const XplmRequest& req) {
+    if (!isPathAllowed(req.ref)) {
+        respond(req, "\"Access denied: path is outside the plugin directory\"", true);
+        return;
+    }
+
+    respond(req, std::filesystem::exists(req.ref) ? "true" : "false");
+}
+
+void XplmBridge::onMessage(const std::string& channel, MessageHandler handler) {
+    std::lock_guard<std::mutex> lock(handlersMutex);
+    messageHandlers[channel] = handler;
+}
+
+void XplmBridge::postMessage(const std::string& channel, const std::string& payload) {
+    if (!lastBrowser || !lastBrowser->GetMainFrame()) {
+        return;
+    }
+
+    std::string js = "if (window.skyscript && window.skyscript._messageListeners) {"
+                     "  var listeners = window.skyscript._messageListeners['" + escapeJsString(channel) + "'];"
+                     "  if (listeners) {"
+                     "    var payload = " + payload + ";"
+                     "    for (var i = 0; i < listeners.length; i++) {"
+                     "      try { listeners[i](payload); } catch(e) { console.error('skyscript onMessage error:', e); }"
+                     "    }"
+                     "  }"
+                     "}";
+
+    lastBrowser->GetMainFrame()->ExecuteJavaScript(js, lastBrowser->GetMainFrame()->GetURL(), 0);
+}
+
+void XplmBridge::setBrowser(CefRefPtr<CefBrowser> browser) {
+    lastBrowser = browser;
+}
+
+std::string XplmBridge::escapeJsString(const std::string& str) {
+    std::string escaped;
+    for (char c : str) {
+        if (c == '\\') escaped += "\\\\";
+        else if (c == '"') escaped += "\\\"";
+        else if (c == '\'') escaped += "\\'";
+        else if (c == '\n') escaped += "\\n";
+        else if (c == '\r') escaped += "\\r";
+        else if (c == '\0') break;
+        else escaped += c;
+    }
+    return escaped;
+}
+
+bool XplmBridge::isPathAllowed(const std::string& path) const {
+    std::string pluginDir = Path::getInstance()->pluginDirectory;
+    if (pluginDir.empty()) {
+        return false;
+    }
+
+    try {
+        std::filesystem::path canonicalPlugin = std::filesystem::weakly_canonical(pluginDir);
+        std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(path);
+        std::string pluginStr = canonicalPlugin.string();
+        std::string pathStr = canonicalPath.string();
+
+        // Path must start with the plugin directory
+        if (pathStr.length() < pluginStr.length()) {
+            return false;
+        }
+        return pathStr.compare(0, pluginStr.length(), pluginStr) == 0;
+    } catch (...) {
+        return false;
+    }
+}
+
 void XplmBridge::respond(const XplmRequest& req, const std::string& jsValue, bool isError) {
     if (!req.browser || !req.browser->GetMainFrame()) {
         return;
@@ -136,10 +314,11 @@ XplmRequest XplmBridge::parseRequestUrl(const std::string& url, CefRefPtr<CefBro
     req.browser = browser;
     req.callbackId = 0;
 
-    // URL format: skyscript://xplm/<action>?ref=...&callbackId=...&value=...&valueType=...
-    // Parse action from path
-    std::string prefix = "skyscript://xplm/";
-    std::string remainder = url.substr(prefix.length());
+    // URL formats:
+    //   skyscript://xplm/<action>?ref=...&callbackId=...&value=...&valueType=...
+    //   skyscript://message/postMessage?channel=...&payload=...&callbackId=...
+    //   skyscript://fs/<action>?ref=...&callbackId=...&value=...
+    std::string remainder = url.substr(std::string("skyscript://").length());
 
     std::string pathPart = remainder;
     std::string queryPart;
@@ -149,14 +328,8 @@ XplmRequest XplmBridge::parseRequestUrl(const std::string& url, CefRefPtr<CefBro
         queryPart = remainder.substr(qpos + 1);
     }
 
-    req.action = pathPart;
-
-    // Parse query parameters
+    // Parse query parameters first
     if (!queryPart.empty()) {
-        CefString query(queryPart);
-        std::multimap<CefString, CefString> params;
-
-        // CefParseURLQuery exists -- use manual parsing for compatibility
         std::istringstream qs(queryPart);
         std::string pair;
         while (std::getline(qs, pair, '&')) {
@@ -169,7 +342,20 @@ XplmRequest XplmBridge::parseRequestUrl(const std::string& url, CefRefPtr<CefBro
             else if (key == "callbackId") req.callbackId = std::stoi(value);
             else if (key == "value") req.value = value;
             else if (key == "valueType") req.valueType = value;
+            else if (key == "channel") req.channel = value;
+            else if (key == "payload") req.payload = value;
         }
+    }
+
+    // Determine action from path
+    if (pathPart.starts_with("xplm/")) {
+        req.action = pathPart.substr(std::string("xplm/").length());
+    } else if (pathPart.starts_with("message/")) {
+        req.action = pathPart.substr(std::string("message/").length());
+    } else if (pathPart.starts_with("fs/")) {
+        req.action = pathPart.substr(std::string("fs/").length());
+    } else {
+        req.action = pathPart;
     }
 
     return req;
@@ -185,6 +371,7 @@ std::string XplmBridge::getInjectionScript() {
     window.skyscript.xplaneVersion = ')" + std::to_string(XPLANE_VERSION) + R"(';
     window.skyscript._callbacks = window.skyscript._callbacks || {};
     window.skyscript._nextId = window.skyscript._nextId || 1;
+    window.skyscript._messageListeners = window.skyscript._messageListeners || {};
 
     window.skyscript._resolve = function(id, value) {
         var cb = window.skyscript._callbacks[id];
@@ -202,7 +389,7 @@ std::string XplmBridge::getInjectionScript() {
         }
     };
 
-    function sendRequest(action, params) {
+    function sendRequest(scheme, action, params) {
         return new Promise(function(resolve, reject) {
             var id = window.skyscript._nextId++;
             window.skyscript._callbacks[id] = { resolve: resolve, reject: reject };
@@ -216,7 +403,7 @@ std::string XplmBridge::getInjectionScript() {
 
             var iframe = document.createElement('iframe');
             iframe.style.display = 'none';
-            iframe.src = 'skyscript://xplm/' + action + '?' + query;
+            iframe.src = 'skyscript://' + scheme + '/' + action + '?' + query;
             document.body.appendChild(iframe);
             setTimeout(function() {
                 document.body.removeChild(iframe);
@@ -226,7 +413,7 @@ std::string XplmBridge::getInjectionScript() {
 
     window.skyscript.xplm = {
         getDataref: function(ref) {
-            return sendRequest('getDataref', { ref: ref });
+            return sendRequest('xplm', 'getDataref', { ref: ref });
         },
         setDataref: function(ref, value, valueType) {
             var type = valueType;
@@ -237,10 +424,37 @@ std::string XplmBridge::getInjectionScript() {
                     type = 'string';
                 }
             }
-            return sendRequest('setDataref', { ref: ref, value: String(value), valueType: type });
+            return sendRequest('xplm', 'setDataref', { ref: ref, value: String(value), valueType: type });
         },
         executeCommand: function(command) {
-            return sendRequest('executeCommand', { ref: command });
+            return sendRequest('xplm', 'executeCommand', { ref: command });
+        }
+    };
+
+    window.skyscript.postMessage = function(channel, payload) {
+        var payloadStr = (payload === undefined) ? 'null' : JSON.stringify(payload);
+        return sendRequest('message', 'postMessage', { channel: channel, payload: payloadStr });
+    };
+
+    window.skyscript.onMessage = function(channel, callback) {
+        if (!window.skyscript._messageListeners[channel]) {
+            window.skyscript._messageListeners[channel] = [];
+        }
+        window.skyscript._messageListeners[channel].push(callback);
+    };
+
+    window.skyscript.fs = {
+        readFile: function(path) {
+            return sendRequest('fs', 'fsReadFile', { ref: path });
+        },
+        writeFile: function(path, content) {
+            return sendRequest('fs', 'fsWriteFile', { ref: path, value: content });
+        },
+        listDir: function(path) {
+            return sendRequest('fs', 'fsListDir', { ref: path });
+        },
+        exists: function(path) {
+            return sendRequest('fs', 'fsExists', { ref: path });
         }
     };
 })();

@@ -62,6 +62,29 @@ int skyscript_app_is_visible(SkyScriptApp app);
 void skyscript_app_show(SkyScriptApp app, const char* url);
 void skyscript_app_hide(SkyScriptApp app);
 
+/* Message passing — JS ↔ Plugin communication.
+
+   skyscript_app_on_message registers a handler for messages sent from
+   JavaScript via window.skyscript.postMessage(channel, payload).
+
+   The handler receives the JSON payload as a string and must return a
+   JSON response string via *out_response (caller frees) or set
+   *out_error to a non-NULL error string (caller frees) to reject
+   the JS Promise.
+
+   skyscript_app_post_message pushes a JSON payload to all JS listeners
+   registered via window.skyscript.onMessage(channel, callback). */
+typedef void (*SkyScriptMessageCallback)(
+    const char* channel,
+    const char* payload,
+    char** out_response,
+    char** out_error,
+    void* user_data
+);
+
+void skyscript_app_on_message(SkyScriptApp app, const char* channel, SkyScriptMessageCallback callback, void* user_data);
+void skyscript_app_post_message(SkyScriptApp app, const char* channel, const char* payload);
+
 /* Logging */
 void skyscript_set_log_prefix(const char* prefix);
 
