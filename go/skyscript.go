@@ -203,3 +203,10 @@ func (a *App) Show(url string) {
 func (a *App) Hide() {
 	C.skyscript_app_hide(a.handle)
 }
+
+// SetLogPrefix sets the prefix used in debug log messages (e.g. "[MyPlugin]").
+func SetLogPrefix(prefix string) {
+	cPrefix := C.CString(prefix)
+	defer C.free(unsafe.Pointer(cPrefix))
+	C.skyscript_set_log_prefix(cPrefix)
+}
