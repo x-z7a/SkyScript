@@ -16,11 +16,18 @@
 #include <OpenGL/gl.h>
 #endif
 
+#include <string>
+
+inline std::string& _skyscript_log_prefix() {
+    static std::string prefix = "[SkyScript]";
+    return prefix;
+}
+
 #define set_brightness(value) glColor4f(value, value, value, 1.0f)
 #define debug(format, ...)                                                           \
     {                                                                                \
         char buffer[1024];                                                           \
-        snprintf(buffer, sizeof(buffer), "[SkyScript] " format, ##__VA_ARGS__); \
+        snprintf(buffer, sizeof(buffer), "%s " format, _skyscript_log_prefix().c_str(), ##__VA_ARGS__); \
         XPLMDebugString(buffer);                                                     \
     }
 

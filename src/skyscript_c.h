@@ -57,6 +57,9 @@ int skyscript_app_is_visible(SkyScriptApp app);
 void skyscript_app_show(SkyScriptApp app, const char* url);
 void skyscript_app_hide(SkyScriptApp app);
 
+/* Logging */
+void skyscript_set_log_prefix(const char* prefix);
+
 #ifdef __cplusplus
 }
 #endif
