@@ -30,6 +30,11 @@ SkyScriptAppConfig skyscript_default_config(void);
 void skyscript_initialize(void);
 void skyscript_shutdown(void);
 
+/* Set the base directory for SkyScript assets (icons, sounds, etc.).
+   If not called, defaults to <pluginDirectory>/assets.
+   Must be called after skyscript_initialize and before creating app windows. */
+void skyscript_set_assets_path(const char* path);
+
 /* App discovery */
 int skyscript_load_apps_from_directory(void);
 void skyscript_reload_apps(void);

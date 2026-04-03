@@ -40,7 +40,7 @@ Notification::Notification(std::string aTitle, std::string body) {
     height = (topPadding + titleBodyPadding + (bodyLines.size() * bodyLineHeight) + buttonPadding + dismissButton->displayHeight() + buttonPadding) / App::current->viewport.height;
 
 #if XPLANE_VERSION == 12
-    std::ifstream file(Path::getInstance()->pluginDirectory + "/assets/notify.pcm", std::ios::binary | std::ios::ate);
+    std::ifstream file(Path::getInstance()->assetsDirectory + "/notify.pcm", std::ios::binary | std::ios::ate);
     if (file) {
         file.seekg(0, std::ios::beg);
         std::vector<char> buffer((std::istreambuf_iterator<char>(file)),

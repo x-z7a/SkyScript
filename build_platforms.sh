@@ -316,6 +316,9 @@ done
 cp go.mod "$LIB_DIST/"
 cp -r go "$LIB_DIST/"
 
+# Copy assets (icons, sounds, etc.) for consumers to bundle with their plugin
+cp -r assets "$LIB_DIST/"
+
 # ---- Example plugin distribution (.xpl + apps + assets + source + libs) ----
 EXAMPLE_DIST="build/dist/$PROJECT_NAME-example"
 

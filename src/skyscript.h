@@ -11,6 +11,11 @@ namespace SkyScript {
 // Initialize the SkyScript library and register the flight loop. Call from XPluginStart.
 void initialize();
 
+// Set the base directory for SkyScript assets (icons, sounds, etc.).
+// If not called, defaults to <pluginDirectory>/assets.
+// Must be called before any app windows are created.
+void setAssetsPath(const std::string& path);
+
 // Shutdown the SkyScript library and unregister the flight loop. Call from XPluginStop.
 void shutdown();
 
