@@ -111,4 +111,10 @@ void skyscript_app_hide(SkyScriptApp app) {
     }
 }
 
+void skyscript_set_log_prefix(const char* prefix) {
+    if (prefix) {
+        SkyScript::setLogPrefix(prefix);
+    }
+}
+
 }

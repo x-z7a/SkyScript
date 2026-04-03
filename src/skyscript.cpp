@@ -267,4 +267,8 @@ void destroyAllAppWindows() {
     activeApp = nullptr;
 }
 
+void setLogPrefix(const std::string& prefix) {
+    _skyscript_log_prefix() = prefix;
+}
+
 }

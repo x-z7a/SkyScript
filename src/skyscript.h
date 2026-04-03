@@ -41,6 +41,9 @@ App* findApp(const std::string& id);
 // Destroy all managed windows and their dataref bindings.
 void destroyAllAppWindows();
 
+// Set the log prefix used in debug messages (e.g. "[MyPlugin]").
+void setLogPrefix(const std::string& prefix);
+
 }
 
 #endif
