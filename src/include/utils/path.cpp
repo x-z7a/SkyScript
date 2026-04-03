@@ -34,7 +34,7 @@ void Path::reloadPaths() {
         rootDirectory = rootDirectory.substr(0, rootDirectory.length() - 1);  // Remove trailing slash
     }
 
-    char pluginFilePath[512];
+    char pluginFilePath[2048];
     XPLMGetPluginInfo(XPLMGetMyID(), nullptr, pluginFilePath, nullptr, nullptr);
     std::string pluginPath = pluginFilePath;
     // Plugin file path is like: .../Resources/plugins/PluginName/platform/Plugin.xpl
@@ -49,6 +49,7 @@ void Path::reloadPaths() {
             pluginDirectory = platformDir;
         }
     } else {
+        debug("Warning: could not determine plugin directory from path, using fallback\n");
         pluginDirectory = rootDirectory + PLUGIN_DIRECTORY;
     }
     
