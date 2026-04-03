@@ -1,12 +1,65 @@
 # Getting Started
 
-This guide walks you through creating your first SkyScript app using the **Hello World** example as a reference. By the end you will have a working app that reads X-Plane datarefs and executes commands from JavaScript.
+SkyScript is a C++ static library that adds CEF browser windows to X-Plane 12 plugins. This guide covers two topics:
 
-## Prerequisites
+1. **Integrating the library** into your X-Plane plugin
+2. **Building a web app** that runs inside a SkyScript browser window
+
+## Integrating the Library
+
+### Prerequisites
+
+- CMake 3.25.1+, C++23 compiler
+- X-Plane SDK 4.2.0
+- Pre-built CEF binaries (included in `lib/<platform>/cef/`)
+
+### CMake Setup
+
+SkyScript builds as a static library (`SkyScriptLib`). Link it from your plugin's `CMakeLists.txt`:
+
+```cmake
+add_subdirectory(path/to/skyscript)
+target_link_libraries(MyPlugin PUBLIC SkyScriptLib)
+```
+
+### Minimal Plugin
+
+```cpp
+#include "skyscript.h"
+
+PLUGIN_API int XPluginStart(char* name, char* sig, char* desc) {
+    strcpy(name, "My Plugin");
+    strcpy(sig, "com.example.myplugin");
+    strcpy(desc, "Plugin with embedded browser");
+
+    SkyScript::initialize();   // Registers flight loop, VR monitoring, cursor
+    return 1;
+}
+
+PLUGIN_API void XPluginStop() {
+    SkyScript::shutdown();     // Unregisters flight loop, destroys all windows
+}
+
+PLUGIN_API int XPluginEnable() {
+    SkyScript::loadAppsFromDirectory();  // Scan apps/ folder
+    return 1;
+}
+
+PLUGIN_API void XPluginDisable() {}
+```
+
+See the [C++ Library API](/developer/cpp-api) for the full reference and the `example/` folder in the repo for a complete working plugin.
+
+---
+
+## Building a Web App
+
+This section walks you through creating a SkyScript app using the **Hello World** example as a reference.
+
+### Prerequisites
 
 - [Node.js](https://nodejs.org/) 18 or later
 - A text editor
-- SkyScript plugin installed in X-Plane 12 (see [Installation](/guide/installation))
 
 ## Scaffold the Project
 
@@ -149,5 +202,6 @@ This compiles the plugin, builds all apps, and copies everything to the X-Plane 
 ## Next Steps
 
 - Read the full [JavaScript API Reference](/developer/api) to learn about `setDataref` and `executeCommand`.
+- Read the [C++ Library API](/developer/cpp-api) for the full reference.
 - Check the [Manifest Reference](/developer/manifest) for options like `user_agent`, `framerate`, and `audio_muted`.
 - Look at the [Hello World source](https://github.com/x-z7a/skyscript/tree/main/apps/hello-world) for a more complete example with polling, custom dataref input, and command execution.

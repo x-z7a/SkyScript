@@ -198,6 +198,34 @@ FUNCTION(add_xplane_plugin library_name library_version src_dir)
     TARGET_INCLUDE_DIRECTORIES(${library_name} PRIVATE ${header_dir_list})
 ENDFUNCTION()
 
+# Build SkyScript as a static library that other plugins can link against
+FUNCTION(add_skyscript_library library_name library_version src_dir)
+    MESSAGE(STATUS "Preparing SkyScript library '${library_name}' at ${src_dir}")
+    FIND_SOURCE_FILES(FILES ${src_dir})
+
+    ADD_LIBRARY(${library_name} STATIC ${FILES})
+    SET_TARGET_PROPERTIES(${library_name} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+    add_xplane_sdk_definitions(${library_name} ${library_version})
+
+    SET_TARGET_PROPERTIES(${library_name} PROPERTIES LINKER_LANGUAGE CXX)
+
+    IF(WIN32)
+        TARGET_COMPILE_DEFINITIONS(${library_name} PUBLIC _CRT_SECURE_NO_WARNINGS)
+        IF(NOT MSVC)
+            TARGET_INCLUDE_DIRECTORIES(${library_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/lib/${DIRECTORY_PREFIX}/curl/include")
+        ENDIF()
+    ENDIF()
+
+    TARGET_LINK_LIBRARIES(${library_name} PUBLIC ${XPLM_LIBRARY} ${XPWIDGETS_LIBRARY} ${CEF_WRAPPER} ${CEF_LIBRARY} ${CURL_LIBRARY} ${OPENGL_LIBRARY} ${COCOA_LIBRARY} ${OPENSSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY})
+    TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC "${XPLANE_INCLUDES_PATH}/XPLM" "${XPLANE_INCLUDES_PATH}/Widgets" "${XPLANE_INCLUDES_PATH}/Wrappers")
+    TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC "${CEF_ROOT}")
+    HEADER_DIRECTORIES(header_dir_list ${src_dir})
+    TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC ${header_dir_list})
+    # Expose src/ itself so consumers can #include "skyscript.h"
+    TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC ${src_dir})
+ENDFUNCTION()
+
 # Derive version from git tags
 EXECUTE_PROCESS(
     COMMAND git describe --tags --match "v*" --exact-match
@@ -231,5 +259,11 @@ ENDIF()
 
 MESSAGE(STATUS "SkyScript version: ${GIT_VERSION}")
 
-add_xplane_plugin(SkyScript 420 "${CMAKE_CURRENT_SOURCE_DIR}/src")
+# Build SkyScript as a static library
+add_skyscript_library(SkyScriptLib 420 "${CMAKE_CURRENT_SOURCE_DIR}/src")
+TARGET_COMPILE_DEFINITIONS(SkyScriptLib PUBLIC SKYSCRIPT_VERSION="${GIT_VERSION}")
+
+# Build the example plugin that uses the SkyScript library
+add_xplane_plugin(SkyScript 420 "${CMAKE_CURRENT_SOURCE_DIR}/example")
+TARGET_LINK_LIBRARIES(SkyScript PUBLIC SkyScriptLib)
 TARGET_COMPILE_DEFINITIONS(SkyScript PRIVATE SKYSCRIPT_VERSION="${GIT_VERSION}")

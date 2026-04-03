@@ -11,25 +11,16 @@ export default defineConfig({
 
   themeConfig: {
     nav: [
-      { text: 'Guide', link: '/guide/installation' },
       { text: 'Developer', link: '/developer/getting-started' },
     ],
 
     sidebar: {
-      '/guide/': [
-        {
-          text: 'User Guide',
-          items: [
-            { text: 'Installation', link: '/guide/installation' },
-            { text: 'Installing Apps', link: '/guide/installing-apps' },
-          ],
-        },
-      ],
       '/developer/': [
         {
-          text: 'App Development',
+          text: 'Developer Guide',
           items: [
             { text: 'Getting Started', link: '/developer/getting-started' },
+            { text: 'C++ Library API', link: '/developer/cpp-api' },
             { text: 'App Manifest', link: '/developer/manifest' },
             { text: 'JavaScript API', link: '/developer/api' },
           ],
