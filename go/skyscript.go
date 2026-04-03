@@ -22,7 +22,7 @@ package skyscript
 #include <string.h>
 
 // Forward declaration of the Go callback bridge.
-extern void skyscriptMessageCallbackBridge(const char* channel, const char* payload, char** out_response, char** out_error, void* user_data);
+extern void skyscriptMessageCallbackBridge(char* channel, char* payload, char** out_response, char** out_error, void* user_data);
 */
 import "C"
 import (
