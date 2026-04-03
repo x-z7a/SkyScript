@@ -35,23 +35,25 @@ void Path::reloadPaths() {
         rootDirectory = rootDirectory.substr(0, rootDirectory.length() - 1);  // Remove trailing slash
     }
 
-    char pluginFilePath[2048];
-    XPLMGetPluginInfo(XPLMGetMyID(), nullptr, pluginFilePath, nullptr, nullptr);
-    std::string pluginPath = pluginFilePath;
-    // Plugin file path is like: .../Resources/plugins/PluginName/platform/Plugin.xpl
-    // Go up two parent directories to get the plugin root directory
-    size_t lastSep = pluginPath.find_last_of("/\\");
-    if (lastSep != std::string::npos) {
-        std::string platformDir = pluginPath.substr(0, lastSep);
-        size_t secondLastSep = platformDir.find_last_of("/\\");
-        if (secondLastSep != std::string::npos) {
-            pluginDirectory = platformDir.substr(0, secondLastSep);
+    if (pluginDirectory.empty()) {
+        char pluginFilePath[2048];
+        XPLMGetPluginInfo(XPLMGetMyID(), nullptr, pluginFilePath, nullptr, nullptr);
+        std::string pluginPath = pluginFilePath;
+        // Plugin file path is like: .../Resources/plugins/PluginName/platform/Plugin.xpl
+        // Go up two parent directories to get the plugin root directory
+        size_t lastSep = pluginPath.find_last_of("/\\");
+        if (lastSep != std::string::npos) {
+            std::string platformDir = pluginPath.substr(0, lastSep);
+            size_t secondLastSep = platformDir.find_last_of("/\\");
+            if (secondLastSep != std::string::npos) {
+                pluginDirectory = platformDir.substr(0, secondLastSep);
+            } else {
+                pluginDirectory = platformDir;
+            }
         } else {
-            pluginDirectory = platformDir;
+            debug("Warning: could not determine plugin directory from path, using fallback\n");
+            pluginDirectory = rootDirectory + PLUGIN_DIRECTORY;
         }
-    } else {
-        debug("Warning: could not determine plugin directory from path, using fallback\n");
-        pluginDirectory = rootDirectory + PLUGIN_DIRECTORY;
     }
     if (assetsDirectory.empty()) {
         assetsDirectory = pluginDirectory + "/assets";
@@ -79,6 +81,13 @@ void Path::reloadPaths() {
     else {
         aircraftDirectory = "";
         aircraftFilename = "";
+    }
+}
+
+void Path::setPluginPath(const std::string& path) {
+    pluginDirectory = path;
+    if (pluginDirectory.ends_with("/") || pluginDirectory.ends_with("\\")) {
+        pluginDirectory.pop_back();
     }
 }
 

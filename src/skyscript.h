@@ -16,6 +16,11 @@ void initialize();
 // Must be called before any app windows are created.
 void setAssetsPath(const std::string& path);
 
+// Set the plugin root directory.
+// If not called, the directory is auto-detected from XPLMGetPluginInfo.
+// Must be called before loadAppsFromDirectory().
+void setPluginPath(const std::string& path);
+
 // Shutdown the SkyScript library and unregister the flight loop. Call from XPluginStop.
 void shutdown();
 

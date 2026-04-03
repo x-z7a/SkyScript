@@ -35,6 +35,11 @@ void skyscript_shutdown(void);
    Must be called after skyscript_initialize and before creating app windows. */
 void skyscript_set_assets_path(const char* path);
 
+/* Set the plugin root directory.
+   If not called, the directory is auto-detected from XPLMGetPluginInfo.
+   Must be called before skyscript_load_apps_from_directory. */
+void skyscript_set_plugin_path(const char* path);
+
 /* App discovery */
 int skyscript_load_apps_from_directory(void);
 void skyscript_reload_apps(void);

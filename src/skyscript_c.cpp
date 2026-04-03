@@ -34,6 +34,12 @@ void skyscript_set_assets_path(const char* path) {
     }
 }
 
+void skyscript_set_plugin_path(const char* path) {
+    if (path) {
+        SkyScript::setPluginPath(path);
+    }
+}
+
 int skyscript_load_apps_from_directory(void) {
     return SkyScript::loadAppsFromDirectory() ? 1 : 0;
 }

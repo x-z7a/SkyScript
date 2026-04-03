@@ -38,6 +38,15 @@ func SetAssetsPath(path string) {
 	C.skyscript_set_assets_path(cPath)
 }
 
+// SetPluginPath sets the plugin root directory.
+// If not called, the directory is auto-detected from XPLMGetPluginInfo.
+// Must be called before LoadAppsFromDirectory.
+func SetPluginPath(path string) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+	C.skyscript_set_plugin_path(cPath)
+}
+
 // Shutdown tears down the SkyScript library and unregisters the flight loop.
 // Call from XPluginStop.
 func Shutdown() {
