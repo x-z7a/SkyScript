@@ -18,6 +18,7 @@ public:
     
     static Path* getInstance();
     void reloadPaths();
+    void setPluginPath(const std::string& path);
     void setAssetsPath(const std::string& path);
 };
 
