@@ -438,6 +438,22 @@ bool Browser::goBack() {
     return true;
 }
 
+void Browser::showDevTools() {
+    if (!handler || !handler->browserInstance) {
+        return;
+    }
+
+    if (handler->browserInstance->GetHost()->HasDevTools()) {
+        handler->browserInstance->GetHost()->CloseDevTools();
+        return;
+    }
+
+    CefWindowInfo windowInfo;
+    CefBrowserSettings settings;
+    CefPoint inspectAt;
+    handler->browserInstance->GetHost()->ShowDevTools(windowInfo, nullptr, settings, inspectAt);
+}
+
 CursorType Browser::cursor() {
     if (!handler) {
         return CursorDefault;

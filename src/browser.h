@@ -45,6 +45,7 @@ public:
     void scroll(float normalizedX, float normalizedY, int clicks, bool horizontal);
     void key(unsigned char key, unsigned char virtualKey, XPLMKeyFlags flags = 0);
     bool goBack();
+    void showDevTools();
     CursorType cursor();
 };
 
