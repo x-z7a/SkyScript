@@ -138,6 +138,102 @@ App* SkyScript::findApp(const std::string& id);
 
 Find a managed app by its id (e.g. `"app-hello-world"`). Returns `nullptr` if not found.
 
+## Message Passing
+
+SkyScript provides a bidirectional message channel between the native plugin and JavaScript running in app windows. This enables plugins to expose custom functions and push structured data to the JS frontend.
+
+### `app->onMessage()`
+
+```cpp
+app->onMessage(
+    const std::string& channel,
+    std::function<std::pair<std::string, std::string>(const std::string& payload)> handler
+);
+```
+
+Register a handler for messages sent from JavaScript via `window.skyscript.postMessage(channel, payload)`.
+
+The handler receives the JSON payload string and must return a `pair<response, error>`:
+- If `error` is non-empty, the JS Promise is rejected with the error message.
+- If `error` is empty, the JS Promise is resolved with the `response` string (must be valid JSON).
+
+| Parameter | Description |
+|-----------|-------------|
+| `channel` | Channel name to handle (e.g. `"getProfile"`) |
+| `handler` | Callback that processes the request and returns `{response, error}` |
+
+**Example:**
+
+```cpp
+App* app = SkyScript::findApp("app-my-plugin");
+
+app->onMessage("getProfile", [](const std::string& payload) -> std::pair<std::string, std::string> {
+    // payload is the JSON string sent from JS
+    // Return {jsonResponse, ""} on success, or {"", errorMessage} on failure
+    return {R"({"name":"default","version":1})", ""};
+});
+
+app->onMessage("saveProfile", [](const std::string& payload) -> std::pair<std::string, std::string> {
+    // Parse and save the profile...
+    return {"null", ""};  // success with no meaningful return value
+});
+```
+
+### `app->postMessageToJS()`
+
+```cpp
+app->postMessageToJS(const std::string& channel, const std::string& payload);
+```
+
+Push a message from the plugin to JavaScript. All JS listeners registered via `window.skyscript.onMessage(channel, callback)` will be called with the parsed payload.
+
+| Parameter | Description |
+|-----------|-------------|
+| `channel` | Channel name to send on |
+| `payload` | JSON string to send (will be parsed in JS) |
+
+**Example:**
+
+```cpp
+App* app = SkyScript::findApp("app-my-plugin");
+
+// Notify JS of a profile update
+app->postMessageToJS("profileUpdated", R"({"name":"default","version":2})");
+
+// Send validation results
+app->postMessageToJS("validationResult", R"({"errors":[],"warnings":["minor issue"]})");
+```
+
+### Go Bindings
+
+```go
+// Register a handler for messages from JS
+app.OnMessage("getProfile", func(payload string) (string, error) {
+    // payload is the JSON string from JS
+    return `{"name":"default"}`, nil
+})
+
+// Push data to JS
+app.PostMessage("profileUpdated", `{"name":"default","version":2}`)
+```
+
+### C API
+
+```c
+// Callback signature
+typedef void (*SkyScriptMessageCallback)(
+    const char* channel,
+    const char* payload,
+    char** out_response,  // set to malloc'd string on success
+    char** out_error,     // set to malloc'd string on failure
+    void* user_data
+);
+
+void skyscript_app_on_message(SkyScriptApp app, const char* channel,
+                              SkyScriptMessageCallback callback, void* user_data);
+void skyscript_app_post_message(SkyScriptApp app, const char* channel, const char* payload);
+```
+
 ## Registered Datarefs & Commands
 
 SkyScript automatically registers these X-Plane datarefs and commands:
