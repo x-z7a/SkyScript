@@ -111,12 +111,12 @@ copy_artifact() {
 
 run_additional_copies() {
     if has_platform mac; then
-        copy_artifact "build/dist/mac_x64/$PROJECT_NAME.xpl" "$MAC_PLUGIN_COPY_TARGET"
+        copy_artifact "build/dist/$PROJECT_NAME-example/mac_x64/$PROJECT_NAME.xpl" "$MAC_PLUGIN_COPY_TARGET"
 
         plugin_dir=$(dirname "$MAC_PLUGIN_COPY_TARGET")
-        if [ -d "build/dist/apps" ]; then
+        if [ -d "build/dist/$PROJECT_NAME-example/apps" ]; then
             rm -rf "$plugin_dir/apps"
-            cp -r "build/dist/apps" "$plugin_dir/apps"
+            cp -r "build/dist/$PROJECT_NAME-example/apps" "$plugin_dir/apps"
             printf 'Copied apps -> %s/apps\n' "$plugin_dir"
         fi
     fi
@@ -264,21 +264,65 @@ if [ -d "apps" ]; then
     done
 fi
 
-printf 'Creating distribution bundle...\n'
+printf 'Creating distribution bundles...\n'
 
 if [ -d "build/dist" ]; then
     rm -rf build/dist
 fi
 
+# ---- Library distribution (static lib + headers) ----
+LIB_DIST="build/dist/$PROJECT_NAME-lib"
+mkdir -p "$LIB_DIST/include"
+
+# Copy public headers (skyscript.h + transitive dependencies)
+cp src/skyscript.h "$LIB_DIST/include/"
+cp src/include/app.h "$LIB_DIST/include/"
+cp src/include/config.h "$LIB_DIST/include/"
+cp src/include/xplm_bridge.h "$LIB_DIST/include/"
+mkdir -p "$LIB_DIST/include/components"
+cp src/include/components/button.h "$LIB_DIST/include/components/"
+cp src/include/components/image.h "$LIB_DIST/include/components/"
+cp src/include/components/notification.h "$LIB_DIST/include/components/"
+mkdir -p "$LIB_DIST/include/utils"
+cp src/include/utils/dataref.h "$LIB_DIST/include/utils/"
+cp src/include/utils/path.h "$LIB_DIST/include/utils/"
+mkdir -p "$LIB_DIST/include/utils/cursor"
+if [ -d "src/include/utils/cursor" ]; then
+    cp src/include/utils/cursor/*.h "$LIB_DIST/include/utils/cursor/" 2>/dev/null || true
+fi
+
+# Copy static library for each built platform
+for platform in $PLATFORMS; do
+    if [ "$platform" = "win" ]; then
+        lib_file="build/$platform/SkyScriptLib.lib"
+        if [ ! -f "$lib_file" ]; then
+            lib_file="build/$platform/libSkyScriptLib.a"
+        fi
+    else
+        lib_file="build/$platform/libSkyScriptLib.a"
+    fi
+
+    if [ -f "$lib_file" ]; then
+        mkdir -p "$LIB_DIST/lib/${platform}_x64"
+        cp "$lib_file" "$LIB_DIST/lib/${platform}_x64/"
+        printf 'Bundled library: %s -> %s\n' "$lib_file" "${platform}_x64"
+    else
+        printf 'Warning: static library not found for %s at %s\n' "$platform" "$lib_file"
+    fi
+done
+
+# ---- Example plugin distribution (.xpl + apps + assets) ----
+EXAMPLE_DIST="build/dist/$PROJECT_NAME-example"
+
 for platform in $AVAILABLE_PLATFORMS; do
-    mkdir -p build/dist/"${platform}"_x64
+    mkdir -p "$EXAMPLE_DIST/${platform}_x64"
 
     if [ -d "build/$platform/${platform}_x64" ]; then
-        cp build/"$platform"/"${platform}"_x64/"$PROJECT_NAME".xpl build/dist/"${platform}"_x64/"$PROJECT_NAME".xpl
+        cp build/"$platform"/"${platform}"_x64/"$PROJECT_NAME".xpl "$EXAMPLE_DIST"/"${platform}"_x64/"$PROJECT_NAME".xpl
     fi
 
     if has_platform "$platform" && [ -d "lib/${platform}_x64/dist_${XPLANE_VERSION}" ]; then
-        cp -r lib/"${platform}"_x64/"dist_${XPLANE_VERSION}"/* build/dist/"${platform}"_x64
+        cp -r lib/"${platform}"_x64/"dist_${XPLANE_VERSION}"/* "$EXAMPLE_DIST"/"${platform}"_x64
     fi
 
     if has_platform "$platform" && [ -d "lib/${platform}_x64/dist_extra_${XPLANE_VERSION}" ] && [ "$EXTRA_FILES" = "y" ]; then
@@ -287,30 +331,29 @@ for platform in $AVAILABLE_PLATFORMS; do
     fi
 done
 
-cp -r assets build/dist
+cp -r assets "$EXAMPLE_DIST"
 
-# Bundle built apps
+# Bundle built apps into example
 if [ -d "apps" ]; then
-    mkdir -p build/dist/apps
+    mkdir -p "$EXAMPLE_DIST/apps"
     for app_dir in apps/*/; do
         app_name=$(basename "$app_dir")
         if [ -d "${app_dir}build" ]; then
-            cp -r "${app_dir}build" "build/dist/apps/${app_name}"
+            cp -r "${app_dir}build" "$EXAMPLE_DIST/apps/${app_name}"
             if [ -f "${app_dir}manifest.yaml" ]; then
-                cp "${app_dir}manifest.yaml" "build/dist/apps/${app_name}/"
+                cp "${app_dir}manifest.yaml" "$EXAMPLE_DIST/apps/${app_name}/"
             fi
             printf 'Bundled app: %s\n' "$app_name"
         elif [ -f "${app_dir}manifest.yaml" ]; then
-            # Manifest-only app (no build step, e.g. web-browser)
-            mkdir -p "build/dist/apps/${app_name}"
-            cp "${app_dir}manifest.yaml" "build/dist/apps/${app_name}/"
+            mkdir -p "$EXAMPLE_DIST/apps/${app_name}"
+            cp "${app_dir}manifest.yaml" "$EXAMPLE_DIST/apps/${app_name}/"
             printf 'Bundled app (manifest only): %s\n' "$app_name"
         fi
     done
 fi
 
 if [ "$XPLANE_VERSION" -ge 12 ]; then
-    cat > build/dist/skunkcrafts_updater.cfg <<EOF
+    cat > "$EXAMPLE_DIST/skunkcrafts_updater.cfg" <<EOF
 module|https://github.com/x-z7a/skyscript
 name|SkyScript
 version|$VERSION
@@ -320,15 +363,23 @@ zone|custom
 EOF
 fi
 
-cd build
-mv dist "$PROJECT_NAME"
+# ---- Create zip archives ----
+cd build/dist
 
-VERSION=$VERSION-XP$XPLANE_VERSION
+VERSION_SUFFIX=$VERSION-XP$XPLANE_VERSION
 
-rm -f "$PROJECT_NAME-$VERSION.zip"
-zip -rq "$PROJECT_NAME-$VERSION.zip" "$PROJECT_NAME" -x "*/.DS_Store" -x "*/__MACOSX/*"
+# Library zip
+rm -f "$PROJECT_NAME-lib-$VERSION_SUFFIX.zip"
+zip -rq "$PROJECT_NAME-lib-$VERSION_SUFFIX.zip" "$PROJECT_NAME-lib" -x "*/.DS_Store" -x "*/__MACOSX/*"
+printf 'Library bundle: build/dist/%s-lib-%s.zip\n' "$PROJECT_NAME" "$VERSION_SUFFIX"
+
+# Example zip
+rm -f "$PROJECT_NAME-example-$VERSION_SUFFIX.zip"
+zip -rq "$PROJECT_NAME-example-$VERSION_SUFFIX.zip" "$PROJECT_NAME-example" -x "*/.DS_Store" -x "*/__MACOSX/*"
+printf 'Example bundle: build/dist/%s-example-%s.zip\n' "$PROJECT_NAME" "$VERSION_SUFFIX"
 
 if [ "$EXTRA_FILES" = "y" ]; then
+    cd ..
     for platform in $PLATFORMS; do
         if [ -d "extra_${platform}" ]; then
             cat > "extra_${platform}/README.txt" <<EOF
@@ -339,12 +390,11 @@ EOF
             zip -rq "XP$XPLANE_VERSION-$platform-additional-files.zip" "extra_${platform}" -x ".DS_Store" -x "__MACOSX"
         fi
     done
+    cd dist
 fi
 
-mv "$PROJECT_NAME" dist
-mv "$PROJECT_NAME-$VERSION.zip" dist/
-cd ..
+cd ../..
 
 run_additional_copies
 
-printf 'Bundle created. Distribution: build/dist/%s-%s.zip\n' "$PROJECT_NAME" "$VERSION"
+printf 'Distribution complete.\n'

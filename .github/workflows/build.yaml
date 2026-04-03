@@ -114,12 +114,18 @@ jobs:
             --team-id "${{ secrets.APPLE_TEAMID }}" \
             --wait
 
-      # ---- Upload artifact ----
-      - name: Upload macOS artifact
+      # ---- Upload artifacts ----
+      - name: Upload macOS plugin
         uses: actions/upload-artifact@v4
         with:
           name: mac_x64
           path: build/mac/mac_x64/SkyScript.xpl
+
+      - name: Upload macOS library
+        uses: actions/upload-artifact@v4
+        with:
+          name: lib_mac_x64
+          path: build/mac/libSkyScriptLib.a
 
   # ---------------------------------------------------------------------------
   # Linux – x86_64, built in container matching the Docker setup
@@ -201,12 +207,18 @@ jobs:
             -Bbuild/lin -H.
           cmake --build build/lin --parallel $(nproc)
 
-      # ---- Upload artifact ----
-      - name: Upload Linux artifact
+      # ---- Upload artifacts ----
+      - name: Upload Linux plugin
         uses: actions/upload-artifact@v4
         with:
           name: lin_x64
           path: build/lin/lin_x64/SkyScript.xpl
+
+      - name: Upload Linux library
+        uses: actions/upload-artifact@v4
+        with:
+          name: lib_lin_x64
+          path: build/lin/libSkyScriptLib.a
 
   # ---------------------------------------------------------------------------
   # Windows – x86_64, native MSVC
@@ -314,12 +326,28 @@ jobs:
           }
           Copy-Item $plugin.FullName build/windows-artifact/SkyScript.xpl
 
-      # ---- Upload artifact ----
-      - name: Upload Windows artifact
+          $lib = Get-ChildItem -Path build/win -Filter SkyScriptLib.lib | Select-Object -First 1
+          if (-not $lib) {
+            $lib = Get-ChildItem -Path build/win -Recurse -Filter SkyScriptLib.lib | Select-Object -First 1
+          }
+          if ($lib) {
+            Copy-Item $lib.FullName build/windows-artifact/SkyScriptLib.lib
+          } else {
+            Write-Warning "SkyScriptLib.lib not found"
+          }
+
+      # ---- Upload artifacts ----
+      - name: Upload Windows plugin
         uses: actions/upload-artifact@v4
         with:
           name: win_x64
           path: build/windows-artifact/SkyScript.xpl
+
+      - name: Upload Windows library
+        uses: actions/upload-artifact@v4
+        with:
+          name: lib_win_x64
+          path: build/windows-artifact/SkyScriptLib.lib
 
   # ---------------------------------------------------------------------------
   # Package + Release (runs after all builds complete)
@@ -363,46 +391,71 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Create distribution bundle
+      - name: Create distribution bundles
         run: |
           PRODUCT_NAME="SkyScript"
           VERSION="${{ steps.version.outputs.version }}"
 
-          mkdir -p dist/${PRODUCT_NAME}/mac_x64
-          mkdir -p dist/${PRODUCT_NAME}/lin_x64
-          mkdir -p dist/${PRODUCT_NAME}/win_x64
+          # ---- Library distribution (static libs + headers) ----
+          LIB_DIST="dist/${PRODUCT_NAME}-lib"
+          mkdir -p "$LIB_DIST/include"
+          mkdir -p "$LIB_DIST/include/components"
+          mkdir -p "$LIB_DIST/include/utils"
+          mkdir -p "$LIB_DIST/include/utils/cursor"
 
-          cp artifacts/mac_x64/SkyScript.xpl dist/${PRODUCT_NAME}/mac_x64/
-          cp artifacts/lin_x64/SkyScript.xpl dist/${PRODUCT_NAME}/lin_x64/
-          cp artifacts/win_x64/SkyScript.xpl dist/${PRODUCT_NAME}/win_x64/
+          cp src/skyscript.h "$LIB_DIST/include/"
+          cp src/include/app.h "$LIB_DIST/include/"
+          cp src/include/config.h "$LIB_DIST/include/"
+          cp src/include/xplm_bridge.h "$LIB_DIST/include/"
+          cp src/include/components/button.h "$LIB_DIST/include/components/"
+          cp src/include/components/image.h "$LIB_DIST/include/components/"
+          cp src/include/components/notification.h "$LIB_DIST/include/components/"
+          cp src/include/utils/dataref.h "$LIB_DIST/include/utils/"
+          cp src/include/utils/path.h "$LIB_DIST/include/utils/"
+          cp src/include/utils/cursor/*.h "$LIB_DIST/include/utils/cursor/" 2>/dev/null || true
 
-          cp -r assets dist/${PRODUCT_NAME}/
+          mkdir -p "$LIB_DIST/lib/mac_x64" "$LIB_DIST/lib/lin_x64" "$LIB_DIST/lib/win_x64"
+          cp artifacts/lib_mac_x64/libSkyScriptLib.a "$LIB_DIST/lib/mac_x64/"
+          cp artifacts/lib_lin_x64/libSkyScriptLib.a "$LIB_DIST/lib/lin_x64/"
+          cp artifacts/lib_win_x64/SkyScriptLib.lib "$LIB_DIST/lib/win_x64/"
 
-          # Bundle built apps
+          # ---- Example plugin distribution ----
+          EXAMPLE_DIST="dist/${PRODUCT_NAME}-example"
+          mkdir -p "$EXAMPLE_DIST/mac_x64" "$EXAMPLE_DIST/lin_x64" "$EXAMPLE_DIST/win_x64"
+
+          cp artifacts/mac_x64/SkyScript.xpl "$EXAMPLE_DIST/mac_x64/"
+          cp artifacts/lin_x64/SkyScript.xpl "$EXAMPLE_DIST/lin_x64/"
+          cp artifacts/win_x64/SkyScript.xpl "$EXAMPLE_DIST/win_x64/"
+
+          cp -r assets "$EXAMPLE_DIST/"
+
+          # Bundle built apps into example
           if [ -d "apps" ]; then
-            mkdir -p dist/${PRODUCT_NAME}/apps
+            mkdir -p "$EXAMPLE_DIST/apps"
             for app_dir in apps/*/; do
               app_name=$(basename "$app_dir")
               if [ -d "${app_dir}build" ]; then
-                cp -r "${app_dir}build" "dist/${PRODUCT_NAME}/apps/${app_name}"
+                cp -r "${app_dir}build" "$EXAMPLE_DIST/apps/${app_name}"
                 if [ -f "${app_dir}manifest.yaml" ]; then
-                  cp "${app_dir}manifest.yaml" "dist/${PRODUCT_NAME}/apps/${app_name}/"
+                  cp "${app_dir}manifest.yaml" "$EXAMPLE_DIST/apps/${app_name}/"
                 fi
                 echo "Bundled app: $app_name"
               elif [ -f "${app_dir}manifest.yaml" ]; then
-                mkdir -p "dist/${PRODUCT_NAME}/apps/${app_name}"
-                cp "${app_dir}manifest.yaml" "dist/${PRODUCT_NAME}/apps/${app_name}/"
+                mkdir -p "$EXAMPLE_DIST/apps/${app_name}"
+                cp "${app_dir}manifest.yaml" "$EXAMPLE_DIST/apps/${app_name}/"
                 echo "Bundled app (manifest only): $app_name"
               fi
             done
           fi
 
-          # Generate skunkcrafts updater config
           printf 'module|https://github.com/x-z7a/skyscript\nname|SkyScript\nversion|%s\nlocked|false\ndisabled|false\nzone|custom\n' "$VERSION" \
-            > dist/${PRODUCT_NAME}/skunkcrafts_updater.cfg
+            > "$EXAMPLE_DIST/skunkcrafts_updater.cfg"
 
+          # ---- Create zip archives ----
           cd dist
-          zip -rq "${PRODUCT_NAME}-${VERSION}-XP12.zip" "${PRODUCT_NAME}" \
+          zip -rq "${PRODUCT_NAME}-lib-${VERSION}-XP12.zip" "${PRODUCT_NAME}-lib" \
+            -x "*/.DS_Store" -x "*/__MACOSX/*"
+          zip -rq "${PRODUCT_NAME}-example-${VERSION}-XP12.zip" "${PRODUCT_NAME}-example" \
             -x "*/.DS_Store" -x "*/__MACOSX/*"
 
       - name: Generate release notes
@@ -496,5 +549,6 @@ jobs:
           name: ${{ steps.version.outputs.tag }}
           body: ${{ steps.changelog.outputs.notes }}
           files: |
-            dist/SkyScript-${{ steps.version.outputs.version }}-XP12.zip
+            dist/SkyScript-lib-${{ steps.version.outputs.version }}-XP12.zip
+            dist/SkyScript-example-${{ steps.version.outputs.version }}-XP12.zip
           prerelease: ${{ contains(github.ref_name, '-') }}
