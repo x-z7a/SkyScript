@@ -48,6 +48,45 @@ PLUGIN_API int XPluginEnable() {
 PLUGIN_API void XPluginDisable() {}
 ```
 
+### Bundling Assets
+
+The SkyScript library distribution includes an `assets/` folder containing icons, sounds, and other resources used by SkyScript UI elements (back buttons, notifications, etc.).
+
+If you are building a **third-party plugin** that uses SkyScript as a library, you need to:
+
+1. **Copy the `assets/` directory** from the library distribution into your plugin folder.
+2. **Call `SkyScript::setAssetsPath()`** after `initialize()` to tell SkyScript where to find the assets.
+
+```cpp
+#include "skyscript.h"
+#include <XPLMPlugin.h>
+
+PLUGIN_API int XPluginStart(char* name, char* sig, char* desc) {
+    strcpy(name, "My Plugin");
+    strcpy(sig, "com.example.myplugin");
+    strcpy(desc, "Plugin with embedded browser");
+
+    SkyScript::initialize();
+
+    // Point SkyScript to the assets bundled with your plugin
+    char pluginPath[512];
+    XPLMGetPluginInfo(XPLMGetMyID(), nullptr, pluginPath, nullptr, nullptr);
+    std::string myPluginDir = std::string(pluginPath).substr(0, std::string(pluginPath).rfind('/'));
+    SkyScript::setAssetsPath(myPluginDir + "/assets");
+
+    return 1;
+}
+```
+
+Without this step, SkyScript will look for assets in its own plugin directory (`Resources/plugins/SkyScript/assets/`), which won't exist if SkyScript is only used as a library.
+
+For **Go bindings**, the equivalent call is:
+
+```go
+skyscript.Initialize()
+skyscript.SetAssetsPath(myPluginDir + "/assets")
+```
+
 See the [C++ Library API](/developer/cpp-api) for the full reference and the `example/` folder in the repo for a complete working plugin.
 
 ---

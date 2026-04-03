@@ -63,8 +63,8 @@ void Browser::initialize() {
     offsetStart = 0.0f;
     offsetEnd = App::browserTopRatio;
 
-    std::string icon = app->config.hide_addressbar ? "/assets/icons/arrow-left-circle.svg" : "/assets/icons/x-circle.svg";
-    backButton = new Button(Path::getInstance()->pluginDirectory + icon);
+    std::string icon = app->config.hide_addressbar ? "/icons/arrow-left-circle.svg" : "/icons/x-circle.svg";
+    backButton = new Button(Path::getInstance()->assetsDirectory + icon);
     backButton->setPosition(backButton->relativeWidth / 2.0f + 0.01f, App::toolbarY);
     backButton->setClickHandler([app]() {
         if (!app->visible) {

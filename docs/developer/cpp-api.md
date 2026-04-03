@@ -16,6 +16,30 @@ Call from `XPluginStart`. Sets up:
 - Flight loop callback (handles app updates, keyboard focus sync)
 - VR mode monitoring (auto-switches windows between desktop and VR)
 
+### `setAssetsPath()`
+
+```cpp
+void SkyScript::setAssetsPath(const std::string& path);
+```
+
+Set the base directory for SkyScript assets (icons, sounds, etc.). If not called, defaults to `<pluginDirectory>/assets` where `pluginDirectory` is the SkyScript plugin folder.
+
+Call after `initialize()` and before creating any app windows. This is essential for **third-party plugins** that use SkyScript as a library, since the default path points to the SkyScript plugin directory which may not contain the assets.
+
+**Example:**
+
+```cpp
+SkyScript::initialize();
+
+// Point to the assets/ folder bundled with your plugin
+char pluginPath[512];
+XPLMGetPluginInfo(XPLMGetMyID(), nullptr, pluginPath, nullptr, nullptr);
+std::string myPluginDir = std::string(pluginPath).substr(0, std::string(pluginPath).rfind('/'));
+SkyScript::setAssetsPath(myPluginDir + "/assets");
+```
+
+The `assets/` directory is included in the SkyScript library distribution zip. Copy it into your plugin folder and point `setAssetsPath()` to it.
+
 ### `shutdown()`
 
 ```cpp
