@@ -404,6 +404,7 @@ jobs:
           mkdir -p "$LIB_DIST/include/utils/cursor"
 
           cp src/skyscript.h "$LIB_DIST/include/"
+          cp src/skyscript_c.h "$LIB_DIST/include/"
           cp src/include/app.h "$LIB_DIST/include/"
           cp src/include/config.h "$LIB_DIST/include/"
           cp src/include/xplm_bridge.h "$LIB_DIST/include/"
@@ -419,9 +420,22 @@ jobs:
           cp artifacts/lib_lin_x64/libSkyScriptLib.a "$LIB_DIST/lib/lin_x64/"
           cp artifacts/lib_win_x64/SkyScriptLib.lib "$LIB_DIST/lib/win_x64/"
 
+          # Copy Go bindings
+          cp go.mod "$LIB_DIST/"
+          cp -r go "$LIB_DIST/"
+
           # ---- Example plugin distribution ----
           EXAMPLE_DIST="dist/${PRODUCT_NAME}-example"
           mkdir -p "$EXAMPLE_DIST/mac_x64" "$EXAMPLE_DIST/lin_x64" "$EXAMPLE_DIST/win_x64"
+
+          # Include example source code and apps
+          mkdir -p "$EXAMPLE_DIST/example"
+          cp example/main.cpp "$EXAMPLE_DIST/example/"
+          cp -r apps "$EXAMPLE_DIST/example/"
+
+          # Include library headers and static libs
+          cp -r "$LIB_DIST/include" "$EXAMPLE_DIST/"
+          cp -r "$LIB_DIST/lib" "$EXAMPLE_DIST/"
 
           cp artifacts/mac_x64/SkyScript.xpl "$EXAMPLE_DIST/mac_x64/"
           cp artifacts/lin_x64/SkyScript.xpl "$EXAMPLE_DIST/lin_x64/"

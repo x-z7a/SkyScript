@@ -274,8 +274,9 @@ fi
 LIB_DIST="build/dist/$PROJECT_NAME-lib"
 mkdir -p "$LIB_DIST/include"
 
-# Copy public headers (skyscript.h + transitive dependencies)
+# Copy public headers (skyscript.h, C API header + transitive dependencies)
 cp src/skyscript.h "$LIB_DIST/include/"
+cp src/skyscript_c.h "$LIB_DIST/include/"
 cp src/include/app.h "$LIB_DIST/include/"
 cp src/include/config.h "$LIB_DIST/include/"
 cp src/include/xplm_bridge.h "$LIB_DIST/include/"
@@ -311,8 +312,23 @@ for platform in $PLATFORMS; do
     fi
 done
 
-# ---- Example plugin distribution (.xpl + apps + assets) ----
+# Copy Go bindings
+cp go.mod "$LIB_DIST/"
+cp -r go "$LIB_DIST/"
+
+# ---- Example plugin distribution (.xpl + apps + assets + source + libs) ----
 EXAMPLE_DIST="build/dist/$PROJECT_NAME-example"
+
+# Include example source code and apps
+mkdir -p "$EXAMPLE_DIST/example"
+cp example/main.cpp "$EXAMPLE_DIST/example/"
+cp -r apps "$EXAMPLE_DIST/example/"
+
+# Include library headers and static libs so developers can build from source
+cp -r "$LIB_DIST/include" "$EXAMPLE_DIST/"
+if [ -d "$LIB_DIST/lib" ]; then
+    cp -r "$LIB_DIST/lib" "$EXAMPLE_DIST/"
+fi
 
 for platform in $AVAILABLE_PLATFORMS; do
     mkdir -p "$EXAMPLE_DIST/${platform}_x64"
