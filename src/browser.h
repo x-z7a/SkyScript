@@ -8,9 +8,9 @@
 
 #include <include/cef_app.h>
 #include "browser_handler.h"
+#include "xplm_bridge.h"
 
 class App;
-class XplmBridge;
 
 class Browser {
 private:
@@ -47,6 +47,10 @@ public:
     bool goBack();
     void showDevTools();
     CursorType cursor();
+
+    // Message passing
+    void onMessage(const std::string& channel, MessageHandler handler);
+    void postMessage(const std::string& channel, const std::string& payload);
 };
 
 #endif

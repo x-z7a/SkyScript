@@ -1,6 +1,6 @@
 # JavaScript API
 
-SkyScript injects the `window.skyscript.xplm` object into every page. All methods return Promises and communicate with X-Plane's SDK on the simulator's main thread.
+SkyScript injects the `window.skyscript` object into every page. The `xplm` namespace provides X-Plane SDK access, `postMessage`/`onMessage` enable bidirectional plugin communication, and the `fs` namespace offers scoped file system access. All async methods return Promises and communicate with the native plugin on the simulator's main thread.
 
 ## Availability
 
@@ -14,7 +14,9 @@ if (window.skyscript?.xplm) {
 
 ## API Reference
 
-### `getDataref(ref)`
+### X-Plane SDK (`skyscript.xplm`)
+
+#### `getDataref(ref)`
 
 Read the current value of an X-Plane dataref.
 
@@ -54,7 +56,7 @@ console.log(`Position: ${lat}, ${lon}`);
 
 ---
 
-### `setDataref(ref, value, valueType?)`
+#### `setDataref(ref, value, valueType?)`
 
 Write a value to an X-Plane dataref.
 
@@ -86,7 +88,7 @@ await skyscript.xplm.setDataref('sim/cockpit/radios/com1_freq_hz', 12180, 'int')
 
 ---
 
-### `executeCommand(command)`
+#### `executeCommand(command)`
 
 Execute an X-Plane command (equivalent to `XPLMCommandOnce`).
 
@@ -108,6 +110,184 @@ await skyscript.xplm.executeCommand('sim/GPS/g1000n1_hdg_sync');
 ```
 
 **Errors:** Does not reject if the command is not found — X-Plane silently ignores unknown commands.
+
+---
+
+### Message Passing (`skyscript.postMessage` / `skyscript.onMessage`)
+
+SkyScript provides a bidirectional message channel between JavaScript and the native plugin (Go/C++). This enables plugins to expose custom functions and push data to the JS frontend without SkyScript needing to know the plugin's domain.
+
+#### `postMessage(channel, payload)`
+
+Send a message from JavaScript to the native plugin and wait for a response.
+
+```ts
+skyscript.postMessage(channel: string, payload: any): Promise<any>
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `channel` | `string` | Channel name identifying the handler (e.g. `"getProfile"`) |
+| `payload` | `any` | Data to send. Will be JSON-serialized automatically. |
+
+**Returns:** A Promise that resolves with the handler's JSON response, or rejects if the handler returns an error or no handler is registered for the channel.
+
+**Example:**
+
+```js
+// Request data from the plugin
+const profile = await skyscript.postMessage('getProfile', { name: 'default' });
+console.log(profile);
+
+// Send data to the plugin
+await skyscript.postMessage('saveProfile', { name: 'custom', buttons: [1, 2, 3] });
+```
+
+---
+
+#### `onMessage(channel, callback)`
+
+Register a listener for messages pushed from the native plugin to JavaScript.
+
+```ts
+skyscript.onMessage(channel: string, callback: (payload: any) => void): void
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `channel` | `string` | Channel name to listen on |
+| `callback` | `function` | Called with the parsed JSON payload when the plugin sends a message |
+
+**Example:**
+
+```js
+// Listen for updates from the plugin
+skyscript.onMessage('profileUpdated', (data) => {
+  console.log('Profile updated:', data);
+  updateUI(data);
+});
+
+skyscript.onMessage('validationResult', (result) => {
+  if (result.errors.length > 0) {
+    showErrors(result.errors);
+  }
+});
+```
+
+Multiple listeners can be registered on the same channel. They are called in registration order.
+
+---
+
+### File System (`skyscript.fs`)
+
+The `fs` namespace provides scoped file system access. All paths are restricted to the plugin directory for security — attempts to access paths outside the plugin directory will be rejected.
+
+#### `readFile(path)`
+
+Read the contents of a file as a string.
+
+```ts
+skyscript.fs.readFile(path: string): Promise<string>
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `path` | `string` | Absolute path to the file (must be within the plugin directory) |
+
+**Example:**
+
+```js
+const content = await skyscript.fs.readFile('/path/to/plugin/config.yaml');
+console.log(content);
+```
+
+**Errors:** Rejects if the file is not found, cannot be read, or the path is outside the plugin directory.
+
+---
+
+#### `writeFile(path, content)`
+
+Write a string to a file. Creates the file and any parent directories if they don't exist. Overwrites existing files.
+
+```ts
+skyscript.fs.writeFile(path: string, content: string): Promise<void>
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `path` | `string` | Absolute path to the file (must be within the plugin directory) |
+| `content` | `string` | Content to write |
+
+**Example:**
+
+```js
+await skyscript.fs.writeFile('/path/to/plugin/config.yaml', yamlContent);
+```
+
+**Errors:** Rejects if the file cannot be written or the path is outside the plugin directory.
+
+---
+
+#### `listDir(path)`
+
+List the names of entries in a directory.
+
+```ts
+skyscript.fs.listDir(path: string): Promise<string[]>
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `path` | `string` | Absolute path to the directory (must be within the plugin directory) |
+
+**Returns:** A Promise that resolves with an array of file and directory names (not full paths).
+
+**Example:**
+
+```js
+const entries = await skyscript.fs.listDir('/path/to/plugin/profiles');
+console.log(entries); // ["default.yaml", "custom.yaml"]
+```
+
+**Errors:** Rejects if the directory is not found or the path is outside the plugin directory.
+
+---
+
+#### `exists(path)`
+
+Check whether a file or directory exists.
+
+```ts
+skyscript.fs.exists(path: string): Promise<boolean>
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `path` | `string` | Absolute path to check (must be within the plugin directory) |
+
+**Returns:** A Promise that resolves with `true` if the path exists, `false` otherwise.
+
+**Example:**
+
+```js
+if (await skyscript.fs.exists('/path/to/plugin/profiles/custom.yaml')) {
+  const content = await skyscript.fs.readFile('/path/to/plugin/profiles/custom.yaml');
+}
+```
+
+**Errors:** Rejects if the path is outside the plugin directory.
 
 ---
 
@@ -149,11 +329,21 @@ interface SkyscriptXplm {
   executeCommand(command: string): Promise<void>;
 }
 
+interface SkyscriptFs {
+  readFile(path: string): Promise<string>;
+  writeFile(path: string, content: string): Promise<void>;
+  listDir(path: string): Promise<string[]>;
+  exists(path: string): Promise<boolean>;
+}
+
 interface Window {
   skyscript: {
     version: string;
     xplaneVersion: string;
     xplm: SkyscriptXplm;
+    postMessage(channel: string, payload: any): Promise<any>;
+    onMessage(channel: string, callback: (payload: any) => void): void;
+    fs: SkyscriptFs;
   };
 }
 ```

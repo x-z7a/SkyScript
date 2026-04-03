@@ -1,6 +1,9 @@
 #include "skyscript_c.h"
 #include "skyscript.h"
 
+#include <cstdlib>
+#include <string>
+
 extern "C" {
 
 SkyScriptAppConfig skyscript_default_config(void) {
@@ -121,6 +124,43 @@ void skyscript_app_hide(SkyScriptApp app) {
     if (app) {
         static_cast<App*>(app)->hideBrowser();
     }
+}
+
+void skyscript_app_on_message(SkyScriptApp app, const char* channel, SkyScriptMessageCallback callback, void* user_data) {
+    if (!app || !channel || !callback) return;
+
+    std::string ch(channel);
+    static_cast<App*>(app)->onMessage(ch, [callback, user_data, ch](const std::string& payload) -> std::pair<std::string, std::string> {
+        char* out_response = nullptr;
+        char* out_error = nullptr;
+
+        callback(ch.c_str(), payload.c_str(), &out_response, &out_error, user_data);
+
+        std::string response;
+        std::string error;
+
+        if (out_error) {
+            error = out_error;
+            free(out_error);
+        }
+        if (out_response) {
+            response = out_response;
+            free(out_response);
+        }
+
+        if (!error.empty()) {
+            return {"", error};
+        }
+        if (response.empty()) {
+            response = "null";
+        }
+        return {response, ""};
+    });
+}
+
+void skyscript_app_post_message(SkyScriptApp app, const char* channel, const char* payload) {
+    if (!app || !channel || !payload) return;
+    static_cast<App*>(app)->postMessageToJS(channel, payload);
 }
 
 void skyscript_set_log_prefix(const char* prefix) {

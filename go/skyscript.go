@@ -19,9 +19,54 @@ package skyscript
 #cgo CFLAGS: -I${SRCDIR}/../src
 #include "skyscript_c.h"
 #include <stdlib.h>
+#include <string.h>
+
+// Forward declaration of the Go callback bridge.
+extern void skyscriptMessageCallbackBridge(const char* channel, const char* payload, char** out_response, char** out_error, void* user_data);
 */
 import "C"
-import "unsafe"
+import (
+	"sync"
+	"unsafe"
+)
+
+// messageHandlerKey identifies a per-app, per-channel message handler.
+type messageHandlerKey struct {
+	app     C.SkyScriptApp
+	channel string
+}
+
+var (
+	messageHandlersMu sync.Mutex
+	messageHandlers   map[messageHandlerKey]func(string) (string, error)
+)
+
+//export skyscriptMessageCallbackBridge
+func skyscriptMessageCallbackBridge(channel *C.char, payload *C.char, outResponse **C.char, outError **C.char, userData unsafe.Pointer) {
+	goChannel := C.GoString(channel)
+	goPayload := C.GoString(payload)
+
+	messageHandlersMu.Lock()
+	key := messageHandlerKey{app: C.SkyScriptApp(userData), channel: goChannel}
+	handler := messageHandlers[key]
+	messageHandlersMu.Unlock()
+
+	if handler == nil {
+		errStr := C.CString("no handler registered")
+		*outError = errStr
+		return
+	}
+
+	response, err := handler(goPayload)
+	if err != nil {
+		errStr := C.CString(err.Error())
+		*outError = errStr
+		return
+	}
+
+	respStr := C.CString(response)
+	*outResponse = respStr
+}
 
 // Initialize sets up the SkyScript library and registers the flight loop.
 // Call from XPluginStart.
@@ -220,6 +265,47 @@ func (a *App) Show(url string) {
 // Hide hides the browser window.
 func (a *App) Hide() {
 	C.skyscript_app_hide(a.handle)
+}
+
+// OnMessage registers a handler for messages sent from JavaScript via
+// window.skyscript.postMessage(channel, payload).
+//
+// The handler receives the JSON payload string and returns a JSON response
+// string. If the handler returns a non-nil error, the JS Promise is rejected.
+//
+// Example:
+//
+//	app.OnMessage("getProfile", func(payload string) (string, error) {
+//	    return `{"name":"default"}`, nil
+//	})
+func (a *App) OnMessage(channel string, handler func(payload string) (string, error)) {
+	cChannel := C.CString(channel)
+	defer C.free(unsafe.Pointer(cChannel))
+
+	// Store the handler so it stays alive for the lifetime of the app.
+	messageHandlersMu.Lock()
+	if messageHandlers == nil {
+		messageHandlers = make(map[messageHandlerKey]func(string) (string, error))
+	}
+	key := messageHandlerKey{app: a.handle, channel: channel}
+	messageHandlers[key] = handler
+	messageHandlersMu.Unlock()
+
+	C.skyscript_app_on_message(a.handle, cChannel, C.SkyScriptMessageCallback(C.skyscriptMessageCallbackBridge), unsafe.Pointer(a.handle))
+}
+
+// PostMessage pushes a JSON payload to all JS listeners registered via
+// window.skyscript.onMessage(channel, callback).
+//
+// Example:
+//
+//	app.PostMessage("profileUpdated", `{"name":"default","version":2}`)
+func (a *App) PostMessage(channel, payload string) {
+	cChannel := C.CString(channel)
+	defer C.free(unsafe.Pointer(cChannel))
+	cPayload := C.CString(payload)
+	defer C.free(unsafe.Pointer(cPayload))
+	C.skyscript_app_post_message(a.handle, cChannel, cPayload)
 }
 
 // SetLogPrefix sets the prefix used in debug log messages (e.g. "[MyPlugin]").
