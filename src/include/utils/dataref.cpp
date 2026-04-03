@@ -482,6 +482,7 @@ void Dataref::bindExistingCommand(const char *command, CommandExecutedCallback c
 void Dataref::createCommand(const char *command, const char *description, CommandExecutedCallback callback) {
     XPLMCommandRef handle = XPLMCreateCommand(command, description);
     if (!handle) {
+        debug("createCommand FAILED for: %s\n", command);
         return;
     }
     
@@ -496,6 +497,8 @@ void Dataref::createCommand(const char *command, const char *description, Comman
     };
     
     XPLMRegisterCommandHandler(handle, handleCommandCallback, 1, nullptr);
+
+    debug("Command registered: %s (handle=%p)\n", command, (void*)handle);
 }
 
 int Dataref::_commandCallback(XPLMCommandRef inCommand, XPLMCommandPhase inPhase, void *inRefcon) {
