@@ -121,11 +121,16 @@ jobs:
           name: mac_x64
           path: build/mac/mac_x64/SkyScript.xpl
 
+      - name: Stage CEF wrapper (macOS)
+        run: cp lib/mac_x64/cef/libcef_dll_wrapper.a build/mac/
+
       - name: Upload macOS library
         uses: actions/upload-artifact@v4
         with:
           name: lib_mac_x64
-          path: build/mac/libSkyScriptLib.a
+          path: |
+            build/mac/libSkyScriptLib.a
+            build/mac/libcef_dll_wrapper.a
 
   # ---------------------------------------------------------------------------
   # Linux – x86_64, built in container matching the Docker setup
@@ -214,11 +219,16 @@ jobs:
           name: lin_x64
           path: build/lin/lin_x64/SkyScript.xpl
 
+      - name: Stage CEF wrapper (Linux)
+        run: cp lib/lin_x64/cef/libcef_dll_wrapper/libcef_dll_wrapper.a build/lin/
+
       - name: Upload Linux library
         uses: actions/upload-artifact@v4
         with:
           name: lib_lin_x64
-          path: build/lin/libSkyScriptLib.a
+          path: |
+            build/lin/libSkyScriptLib.a
+            build/lin/libcef_dll_wrapper.a
 
   # ---------------------------------------------------------------------------
   # Windows – x86_64, native MSVC
@@ -336,6 +346,8 @@ jobs:
             Write-Warning "SkyScriptLib.lib not found"
           }
 
+          Copy-Item lib/win_x64/cef/libcef_dll_wrapper/libcef_dll_wrapper.lib build/windows-artifact/
+
       # ---- Upload artifacts ----
       - name: Upload Windows plugin
         uses: actions/upload-artifact@v4
@@ -347,7 +359,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lib_win_x64
-          path: build/windows-artifact/SkyScriptLib.lib
+          path: |
+            build/windows-artifact/SkyScriptLib.lib
+            build/windows-artifact/libcef_dll_wrapper.lib
 
   # ---------------------------------------------------------------------------
   # Package + Release (runs after all builds complete)
@@ -417,8 +431,11 @@ jobs:
 
           mkdir -p "$LIB_DIST/lib/mac_x64" "$LIB_DIST/lib/lin_x64" "$LIB_DIST/lib/win_x64"
           cp artifacts/lib_mac_x64/libSkyScriptLib.a "$LIB_DIST/lib/mac_x64/"
+          cp artifacts/lib_mac_x64/libcef_dll_wrapper.a "$LIB_DIST/lib/mac_x64/"
           cp artifacts/lib_lin_x64/libSkyScriptLib.a "$LIB_DIST/lib/lin_x64/"
+          cp artifacts/lib_lin_x64/libcef_dll_wrapper.a "$LIB_DIST/lib/lin_x64/"
           cp artifacts/lib_win_x64/SkyScriptLib.lib "$LIB_DIST/lib/win_x64/"
+          cp artifacts/lib_win_x64/libcef_dll_wrapper.lib "$LIB_DIST/lib/win_x64/"
 
           # Copy Go bindings
           cp go.mod "$LIB_DIST/"
