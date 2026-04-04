@@ -198,17 +198,30 @@ FUNCTION(add_xplane_plugin library_name library_version src_dir)
     TARGET_INCLUDE_DIRECTORIES(${library_name} PRIVATE ${header_dir_list})
 ENDFUNCTION()
 
-# Build SkyScript as a static library that other plugins can link against
+# Build SkyScript as a shared library that other plugins can link against
 FUNCTION(add_skyscript_library library_name library_version src_dir)
     MESSAGE(STATUS "Preparing SkyScript library '${library_name}' at ${src_dir}")
     FIND_SOURCE_FILES(FILES ${src_dir})
 
-    ADD_LIBRARY(${library_name} STATIC ${FILES})
+    ADD_LIBRARY(${library_name} SHARED ${FILES})
     SET_TARGET_PROPERTIES(${library_name} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    TARGET_COMPILE_DEFINITIONS(${library_name} PRIVATE SKYSCRIPT_BUILDING_DLL)
 
     add_xplane_sdk_definitions(${library_name} ${library_version})
 
     SET_TARGET_PROPERTIES(${library_name} PROPERTIES LINKER_LANGUAGE CXX)
+
+    IF(APPLE)
+        SET_TARGET_PROPERTIES(${library_name} PROPERTIES
+            CXX_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN ON
+        )
+    ELSEIF(UNIX)
+        SET_TARGET_PROPERTIES(${library_name} PROPERTIES
+            CXX_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN ON
+        )
+    ENDIF()
 
     IF(WIN32)
         TARGET_COMPILE_DEFINITIONS(${library_name} PUBLIC _CRT_SECURE_NO_WARNINGS)
@@ -222,7 +235,7 @@ FUNCTION(add_skyscript_library library_name library_version src_dir)
     TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC "${CEF_ROOT}")
     HEADER_DIRECTORIES(header_dir_list ${src_dir})
     TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC ${header_dir_list})
-    # Expose src/ itself so consumers can #include "skyscript.h"
+    # Expose src/ itself so consumers can #include "skyscript_c.h"
     TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC ${src_dir})
 ENDFUNCTION()
 
@@ -259,11 +272,11 @@ ENDIF()
 
 MESSAGE(STATUS "SkyScript version: ${GIT_VERSION}")
 
-# Build SkyScript as a static library
+# Build SkyScript as a shared library
 add_skyscript_library(SkyScriptLib 420 "${CMAKE_CURRENT_SOURCE_DIR}/src")
 TARGET_COMPILE_DEFINITIONS(SkyScriptLib PUBLIC SKYSCRIPT_VERSION="${GIT_VERSION}")
 
-# Build the example plugin that uses the SkyScript library
+# Build the example plugin that uses the SkyScript shared library via C API
 add_xplane_plugin(SkyScript 420 "${CMAKE_CURRENT_SOURCE_DIR}/example")
 TARGET_LINK_LIBRARIES(SkyScript PUBLIC SkyScriptLib)
 TARGET_COMPILE_DEFINITIONS(SkyScript PRIVATE SKYSCRIPT_VERSION="${GIT_VERSION}")

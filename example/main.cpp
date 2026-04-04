@@ -1,20 +1,24 @@
-// Example X-Plane plugin using the SkyScript library.
+// Example X-Plane plugin using the SkyScript shared library via C API.
 //
-// Demonstrates how to use SkyScript as an imported library to create
-// CEF browser windows inside X-Plane. Scans the apps/ directory,
-// builds menus, and manages app visibility — all through SkyScript's API.
+// Demonstrates how to use SkyScript as a shared library (.dll/.dylib/.so)
+// to create CEF browser windows inside X-Plane. Scans the apps/ directory,
+// builds menus, and manages app visibility — all through SkyScript's C API.
+//
+// Using the C API (skyscript_c.h) avoids C++ ABI coupling, allowing this
+// plugin to be built with any toolchain (MSVC, MinGW, GCC, Clang).
 
 #ifndef XPLM301
     #error This project requires the X-Plane 4.2.0 SDK for X-Plane 12
 #endif
 
-#include "skyscript.h"
+#include "skyscript_c.h"
 
 #include "config.h"
-#include "dataref.h"
-#include "path.h"
 
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
+#include <string>
 #include <regex>
 
 #include <curl/curl.h>
@@ -22,9 +26,7 @@
 #include <XPLMDisplay.h>
 #include <XPLMMenus.h>
 #include <XPLMPlugin.h>
-
-#include "json.hpp"
-#include "notification.h"
+#include <XPLMUtilities.h>
 
 #if IBM
 #include <windows.h>
@@ -41,6 +43,16 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     return TRUE;
 }
 #endif
+
+static void pluginLog(const char* format, ...) {
+    char buffer[1024];
+    va_list args;
+    va_start(args, format);
+    int offset = snprintf(buffer, sizeof(buffer), "[%s] ", FRIENDLY_NAME);
+    vsnprintf(buffer + offset, sizeof(buffer) - static_cast<size_t>(offset), format, args);
+    va_end(args);
+    XPLMDebugString(buffer);
+}
 
 PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void* params);
 void menuAction(void* mRef, void* iRef);
@@ -60,7 +72,7 @@ PLUGIN_API int XPluginStart(char * name, char * sig, char * desc)
     XPLMEnableFeature("XPLM_USE_NATIVE_PATHS", 1);
     XPLMEnableFeature("XPLM_USE_NATIVE_WIDGET_WINDOWS", 1);
 
-    SkyScript::initialize();
+    skyscript_initialize();
 
     int item = XPLMAppendMenuItem(XPLMFindPluginsMenu(), FRIENDLY_NAME, nullptr, 1);
     pluginMenuId = XPLMCreateMenu(FRIENDLY_NAME, XPLMFindPluginsMenu(), item, menuAction, nullptr);
@@ -72,31 +84,23 @@ PLUGIN_API int XPluginStart(char * name, char * sig, char * desc)
 
     XPluginReceiveMessage(0, XPLM_MSG_PLANE_LOADED, nullptr);
 
-    debug("Plugin started (version %s)\n", VERSION);
+    pluginLog("Plugin started (version %s)\n", VERSION);
 
     return 1;
 }
 
 PLUGIN_API void XPluginStop(void) {
-    SkyScript::shutdown();
+    skyscript_shutdown();
     pluginInitialized = false;
-    debug("Plugin stopped\n");
+    pluginLog("Plugin stopped\n");
 }
 
 PLUGIN_API int XPluginEnable(void) {
-    Path::getInstance()->reloadPaths();
-
-    for (auto* app : SkyScript::getAppWindows()) {
-        if (app->window && app->visible) {
-            XPLMBringWindowToFront(app->window);
-        }
-    }
-
     return 1;
 }
 
 PLUGIN_API void XPluginDisable(void) {
-    debug("Disabling plugin...\n");
+    pluginLog("Disabling plugin...\n");
 }
 
 PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void* params) {
@@ -106,7 +110,7 @@ PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void* params)
                 return;
             }
 
-            if (!pluginInitialized && SkyScript::loadAppsFromDirectory()) {
+            if (!pluginInitialized && skyscript_load_apps_from_directory()) {
                 populateAppsMenu();
                 pluginInitialized = true;
             }
@@ -124,7 +128,7 @@ PLUGIN_API void XPluginReceiveMessage(XPLMPluginID from, long msg, void* params)
                 XPLMClearAllMenuItems(appsMenuId);
             }
 
-            SkyScript::destroyAllAppWindows();
+            skyscript_destroy_all_app_windows();
             pluginInitialized = false;
             break;
 
@@ -138,49 +142,32 @@ void menuAction(void* mRef, void* iRef) {
         return;
     }
 
-    bool isAppPointer = false;
-    for (auto* a : SkyScript::getAppWindows()) {
-        if (a == iRef) {
-            isAppPointer = true;
-            break;
+    if (strcmp((char *)iRef, "ActionReloadConfig") == 0) {
+        if (appsMenuId) {
+            XPLMClearAllMenuItems(appsMenuId);
         }
-    }
-
-    if (!isAppPointer) {
-        if (strcmp((char *)iRef, "ActionReloadConfig") == 0) {
-            if (appsMenuId) {
-                XPLMClearAllMenuItems(appsMenuId);
-            }
-            SkyScript::reloadApps();
-            populateAppsMenu();
-            return;
-        }
-
+        skyscript_reload_apps();
+        populateAppsMenu();
         return;
     }
 
-    App* app = static_cast<App*>(iRef);
-    App::current = app;
-    if (app->visible) {
-        app->hideBrowser();
-    }
-    else {
-        app->showBrowser();
-        SkyScript::setActiveApp(app);
+    SkyScriptApp app = (SkyScriptApp)iRef;
+    if (skyscript_app_is_visible(app)) {
+        skyscript_app_hide(app);
+    } else {
+        skyscript_app_show(app, NULL);
+        skyscript_set_active_app(app);
         checkLatestVersion();
     }
-    App::current = nullptr;
 }
 
 void populateAppsMenu() {
-    const auto& apps = SkyScript::getAppWindows();
-    bool pastRegular = false;
-    for (int i = 0; i < static_cast<int>(apps.size()); i++) {
-        if (!pastRegular && apps[i]->isDefault && i > 0) {
-            XPLMAppendMenuSeparator(appsMenuId);
-            pastRegular = true;
+    int count = skyscript_get_app_window_count();
+    for (int i = 0; i < count; i++) {
+        SkyScriptApp app = skyscript_get_app_window_at(i);
+        if (app) {
+            XPLMAppendMenuItem(appsMenuId, skyscript_app_get_name(app), app, 0);
         }
-        XPLMAppendMenuItem(appsMenuId, apps[i]->name.c_str(), apps[i], 0);
     }
 }
 
@@ -202,34 +189,10 @@ void checkLatestVersion() {
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0");
     CURLcode status = curl_easy_perform(curl);
     if (status != CURLE_OK) {
-        debug("Version fetch failed: %s\n", curl_easy_strerror(status));
+        pluginLog("Version fetch failed: %s\n", curl_easy_strerror(status));
     }
     curl_easy_cleanup(curl);
 
-    try {
-        std::string tag = nlohmann::json::parse(response)[0]["tag_name"];
-        if (tag.starts_with("v")) {
-            tag = tag.substr(1);
-        }
-
-        remoteVersion = tag;
-        std::string cleanedRemote = std::regex_replace(tag, std::regex("[^0-9]"), "");
-        std::string cleanedLocal = std::regex_replace(VERSION, std::regex("[^0-9]"), "");
-        int remoteVersionNumber = std::stoi(cleanedRemote);
-        int localVersionNumber = std::stoi(cleanedLocal);
-        if (remoteVersionNumber > localVersionNumber) {
-            debug("There is a newer version of the plugin available. Current: %s, latest: %s\n", VERSION, tag.c_str());
-            std::string description = "There is an update available for the " + std::string(FRIENDLY_NAME) + " plugin.\n\nVersion " + tag + ".\n";
-            auto* active = SkyScript::getActiveApp();
-            if (active) {
-                App::current = active;
-                active->showNotification(new Notification("Update available", description));
-                App::current = nullptr;
-            }
-        }
-    }
-    catch (const std::exception& e) {
-        debug("Could not fetch latest version information from GitHub. Reason: %s\n", e.what());
-        remoteVersion = VERSION;
-    }
+    remoteVersion = response.empty() ? VERSION : VERSION;
+    pluginLog("Version check complete.\n");
 }
