@@ -155,7 +155,7 @@ void menuAction(void* mRef, void* iRef) {
     if (skyscript_app_is_visible(app)) {
         skyscript_app_hide(app);
     } else {
-        skyscript_app_show(app, NULL);
+        skyscript_app_show(app, nullptr);
         skyscript_set_active_app(app);
         checkLatestVersion();
     }
@@ -193,6 +193,6 @@ void checkLatestVersion() {
     }
     curl_easy_cleanup(curl);
 
-    remoteVersion = response.empty() ? VERSION : VERSION;
+    remoteVersion = VERSION;
     pluginLog("Version check complete.\n");
 }
