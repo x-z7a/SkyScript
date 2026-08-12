@@ -42,6 +42,36 @@
 #include "unix_keycodes.h"
 #endif
 
+#if APL
+namespace {
+
+bool loadPluginLocalCefFramework() {
+    static bool loaded = false;
+    if (loaded) {
+        return true;
+    }
+
+    const std::string frameworkPath =
+        Path::getInstance()->pluginDirectory +
+        "/mac_x64/Chromium Embedded Framework.framework/Chromium Embedded Framework";
+
+    if (!std::filesystem::exists(frameworkPath)) {
+        debug("Could not find the CEF framework at %s.\n", frameworkPath.c_str());
+        return false;
+    }
+
+    if (!cef_load_library(frameworkPath.c_str())) {
+        debug("Could not load the CEF framework from %s.\n", frameworkPath.c_str());
+        return false;
+    }
+
+    loaded = true;
+    return true;
+}
+
+} // namespace
+#endif
+
 Browser::Browser() {
     textureId = 0;
     offsetStart = 0.0f;
@@ -470,9 +500,7 @@ bool Browser::createBrowser() {
     App *app = App::current;
 
 #if APL
-    CefScopedLibraryLoader library_loader;
-    if (!library_loader.LoadInMain()) {
-        debug("Could not load the CEF framework.\n");
+    if (!loadPluginLocalCefFramework()) {
         return false;
     }
 #endif
