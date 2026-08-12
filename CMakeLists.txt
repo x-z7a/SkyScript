@@ -108,6 +108,30 @@ FUNCTION(FIND_SOURCE_FILES return_list base_dir)
     SET(${return_list} ${new_list} PARENT_SCOPE)
 ENDFUNCTION()
 
+FUNCTION(use_plugin_local_runtime_paths target_name)
+    IF(APPLE)
+        SET_TARGET_PROPERTIES(${target_name} PROPERTIES
+            BUILD_RPATH "@loader_path"
+            BUILD_WITH_INSTALL_RPATH TRUE
+            INSTALL_RPATH "@loader_path"
+        )
+        ADD_CUSTOM_COMMAND(TARGET ${target_name} POST_BUILD
+            COMMAND install_name_tool
+                -change
+                "@executable_path/../Frameworks/Chromium Embedded Framework.framework/Chromium Embedded Framework"
+                "@loader_path/Chromium Embedded Framework.framework/Chromium Embedded Framework"
+                "$<TARGET_FILE:${target_name}>"
+            VERBATIM
+        )
+    ELSEIF(UNIX)
+        SET_TARGET_PROPERTIES(${target_name} PROPERTIES
+            BUILD_RPATH "\$ORIGIN"
+            BUILD_WITH_INSTALL_RPATH TRUE
+            INSTALL_RPATH "\$ORIGIN"
+        )
+    ENDIF()
+ENDFUNCTION()
+
 FUNCTION(add_xplane_sdk_definitions library_name library_version)
     IF(APPLE)
         TARGET_COMPILE_DEFINITIONS(${library_name} PUBLIC -DAPL=1 -DIBM=0 -DLIN=0 -DXPLANE_VERSION=${XPLANE_VERSION})
@@ -208,6 +232,7 @@ FUNCTION(add_xplane_plugin library_name library_version src_dir)
     TARGET_INCLUDE_DIRECTORIES(${library_name} PRIVATE "${CEF_ROOT}")
     HEADER_DIRECTORIES(header_dir_list ${src_dir})
     TARGET_INCLUDE_DIRECTORIES(${library_name} PRIVATE ${header_dir_list})
+    use_plugin_local_runtime_paths(${library_name})
 ENDFUNCTION()
 
 # Build SkyScript as a shared library that other plugins can link against
@@ -251,6 +276,7 @@ FUNCTION(add_skyscript_library library_name library_version src_dir)
     TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC ${header_dir_list})
     # Expose src/ itself so consumers can #include "skyscript_c.h"
     TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC ${src_dir})
+    use_plugin_local_runtime_paths(${library_name})
 ENDFUNCTION()
 
 # Derive version from git tags
