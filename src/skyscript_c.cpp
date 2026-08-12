@@ -84,6 +84,14 @@ int skyscript_get_app_window_count(void) {
     return static_cast<int>(SkyScript::getAppWindows().size());
 }
 
+SkyScriptApp skyscript_get_app_window_at(int index) {
+    const auto& apps = SkyScript::getAppWindows();
+    if (index < 0 || index >= static_cast<int>(apps.size())) {
+        return nullptr;
+    }
+    return static_cast<SkyScriptApp>(apps[index]);
+}
+
 SkyScriptApp skyscript_get_active_app(void) {
     return static_cast<SkyScriptApp>(SkyScript::getActiveApp());
 }
