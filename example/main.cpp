@@ -15,6 +15,7 @@
 
 #include "config.h"
 
+#include <cstdarg>
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
