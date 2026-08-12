@@ -172,7 +172,19 @@ FUNCTION(add_xplane_plugin library_name library_version src_dir)
         IF(NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/${DIRECTORY_PREFIX}")
             FILE(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${DIRECTORY_PREFIX}")
         ENDIF()
-        SET_TARGET_PROPERTIES(${library_name} PROPERTIES OUTPUT_NAME "${DIRECTORY_PREFIX}/${library_name}.xpl")
+        SET_TARGET_PROPERTIES(${library_name} PROPERTIES
+            OUTPUT_NAME "${library_name}.xpl"
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${DIRECTORY_PREFIX}"
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${DIRECTORY_PREFIX}"
+            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${DIRECTORY_PREFIX}"
+        )
+        FOREACH(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+            SET_TARGET_PROPERTIES(${library_name} PROPERTIES
+                RUNTIME_OUTPUT_DIRECTORY_${config} "${CMAKE_CURRENT_BINARY_DIR}/${DIRECTORY_PREFIX}"
+                LIBRARY_OUTPUT_DIRECTORY_${config} "${CMAKE_CURRENT_BINARY_DIR}/${DIRECTORY_PREFIX}"
+                ARCHIVE_OUTPUT_DIRECTORY_${config} "${CMAKE_CURRENT_BINARY_DIR}/${DIRECTORY_PREFIX}"
+            )
+        ENDFOREACH()
     ENDIF()
 
     add_xplane_sdk_definitions(${library_name} ${library_version})
