@@ -22,6 +22,10 @@ lib/<platform>/   → Pre-built CEF binaries
 - CEF tree under `lib/<platform>/cef`
 - CMake 3.25.1+, C++23
 
+## License
+
+SkyScript is licensed under the MIT License.
+
 ## Build
 
 ```sh

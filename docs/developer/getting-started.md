@@ -24,14 +24,21 @@ SkyScript-lib/
 ├── lib/
 │   ├── win_x64/
 │   │   ├── SkyScriptLib.dll     # Windows shared library
-│   │   └── SkyScriptLib.lib     # Windows import library (for MSVC)
+│   │   ├── SkyScriptLib.lib     # Windows import library (for MSVC)
+│   │   ├── cef/                 # CEF headers/libraries used by SkyScript
+│   │   └── ...                  # CEF runtime files for win_x64
 │   ├── mac_x64/
-│   │   └── libSkyScriptLib.dylib
+│   │   ├── libSkyScriptLib.dylib
+│   │   ├── cef/                 # CEF framework and headers
+│   │   └── ...                  # CEF runtime files for mac_x64
 │   └── lin_x64/
-│       └── libSkyScriptLib.so
+│       ├── libSkyScriptLib.so
+│       ├── cef/                 # CEF headers/libraries used by SkyScript
+│       └── ...                  # CEF runtime files for lin_x64
 ├── go/                      # Go bindings
 ├── go.mod
-└── assets/                  # Icons, sounds, etc.
+├── assets/                  # Icons, sounds, etc.
+└── LICENSE
 ```
 
 ### CMake Setup
@@ -123,6 +130,9 @@ At runtime, the SkyScript shared library must be loadable by the operating syste
 - **Windows**: Place `SkyScriptLib.dll` next to your `.xpl` plugin, or in the same `win_x64/` directory.
 - **macOS**: Place `libSkyScriptLib.dylib` next to your `.xpl` plugin, or in the same `mac_x64/` directory.
 - **Linux**: Place `libSkyScriptLib.so` next to your `.xpl` plugin, or in the same `lin_x64/` directory.
+
+Also copy the platform CEF runtime files from the same distribution directory
+beside the plugin. The shared library contains SkyScript, not Chromium itself.
 
 For **Go bindings**, the equivalent calls are:
 

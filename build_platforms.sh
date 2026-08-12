@@ -109,6 +109,28 @@ copy_artifact() {
     printf 'Copied %s -> %s\n' "$source_path" "$destination_path"
 }
 
+copy_runtime_files() {
+    platform=$1
+    destination_dir=$2
+    platform_dir="lib/${platform}_x64"
+
+    if [ -d "${platform_dir}/cef" ]; then
+        mkdir -p "$destination_dir"
+        cp -r "${platform_dir}/cef" "$destination_dir/cef"
+        printf 'Bundled CEF tree: %s -> %s\n' "${platform_dir}/cef" "$destination_dir"
+    else
+        printf 'Warning: CEF tree not found for %s at %s\n' "$platform" "${platform_dir}/cef"
+    fi
+
+    if [ -d "${platform_dir}/dist_${XPLANE_VERSION}" ]; then
+        mkdir -p "$destination_dir"
+        cp -r "${platform_dir}/dist_${XPLANE_VERSION}"/* "$destination_dir/"
+        printf 'Bundled CEF runtime files: %s -> %s\n' "${platform_dir}/dist_${XPLANE_VERSION}" "$destination_dir"
+    else
+        printf 'Warning: CEF runtime files not found for %s at %s\n' "$platform" "${platform_dir}/dist_${XPLANE_VERSION}"
+    fi
+}
+
 run_additional_copies() {
     if has_platform mac; then
         copy_artifact "build/dist/$PROJECT_NAME-example/mac_x64/$PROJECT_NAME.xpl" "$MAC_PLUGIN_COPY_TARGET"
@@ -276,8 +298,9 @@ mkdir -p "$LIB_DIST/include"
 
 # Copy C API header (the only header downstream consumers need)
 cp src/skyscript_c.h "$LIB_DIST/include/"
+cp LICENSE "$LIB_DIST/"
 
-# Copy shared library for each built platform
+# Copy shared library and runtime support for each built platform
 for platform in $PLATFORMS; do
     if [ "$platform" = "win" ]; then
         lib_file="build/$platform/SkyScriptLib.dll"
@@ -302,6 +325,8 @@ for platform in $PLATFORMS; do
             cp "$import_lib" "$LIB_DIST/lib/${platform}_x64/"
             printf 'Bundled import library: %s -> %s\n' "$import_lib" "${platform}_x64"
         fi
+
+        copy_runtime_files "$platform" "$LIB_DIST/lib/${platform}_x64"
     else
         printf 'Warning: shared library not found for %s at %s\n' "$platform" "$lib_file"
     fi

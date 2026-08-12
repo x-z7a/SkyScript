@@ -214,6 +214,8 @@ FUNCTION(add_skyscript_library library_name library_version src_dir)
     IF(APPLE)
         SET_TARGET_PROPERTIES(${library_name} PROPERTIES
             CXX_VISIBILITY_PRESET hidden
+            INSTALL_NAME_DIR "@rpath"
+            MACOSX_RPATH ON
             VISIBILITY_INLINES_HIDDEN ON
         )
     ELSEIF(UNIX)
