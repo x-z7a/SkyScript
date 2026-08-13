@@ -38,6 +38,7 @@ App::App(const std::string& aName, const std::string& anId, AppType aType, const
     isDefault = false;
     config = aConfig;
     notification = nullptr;
+    notificationOverlay = false;
     window = nullptr;
     windowDragActive = false;
     windowDragStartX = 0;
@@ -128,6 +129,7 @@ void App::deinitialize() {
     tasks.clear();
     buttons.clear();
     windowDragActive = false;
+    notificationOverlay = false;
     visible = false;
     activeCursor = CursorDefault;
     brightness = 1.0f;
@@ -147,6 +149,12 @@ void App::update() {
 
     if (visible) {
         syncWindowGeometry();
+    }
+    else if (notificationOverlay) {
+        // The toast lays itself out against the viewport, so it still needs
+        // real geometry. The browser is hidden, so it must not be resized to
+        // match: that would rasterise a page nobody is looking at.
+        syncWindowGeometry(false);
     }
 
     browser->update();
@@ -174,16 +182,22 @@ void App::update() {
 }
 
 void App::draw() {
-    if (!visible) {
+    if (!visible && !notificationOverlay) {
         return;
     }
 
     App::current = this;
 
-    syncWindowGeometry();
+    syncWindowGeometry(visible);
 
-    drawWindowBackground();
-    browser->draw();
+    // With the browser hidden the window exists only to carry the toast, so
+    // neither the window background nor the page is painted -- what the user
+    // sees is the notification alone, floating over the cockpit.
+    if (visible) {
+        drawWindowBackground();
+        browser->draw();
+    }
+
     if (notification) {
         notification->draw();
     }
@@ -346,6 +360,10 @@ void App::showBrowser(std::string url) {
         browser->loadUrl(url);
     }
 
+    // The window may already be on screen carrying a toast. Opening the app
+    // takes it over rather than raising a second one.
+    notificationOverlay = false;
+
     if (!visible) {
         browser->visibilityWillChange(true);
         visible = true;
@@ -370,6 +388,12 @@ void App::hideBrowser() {
     if (window) {
         XPLMSetWindowIsVisible(window, 0);
     }
+
+    // Closing the app mid-toast should not swallow it. The window comes back
+    // immediately in notification-only mode and the toast finishes its life.
+    if (notification) {
+        setNotificationOverlay(true);
+    }
 }
 
 void App::showNotification(Notification *aNotification) {
@@ -383,12 +407,30 @@ void App::showNotification(Notification *aNotification) {
     }
 
     notification = aNotification;
+
+    // A notification is worth showing whether or not the app is open -- that is
+    // the whole point of a notification. With the browser hidden the window
+    // comes up carrying nothing but the toast.
+    setNotificationOverlay(true);
 }
 
 void App::showNotification(const NotificationOptions& options) {
     App* previous = App::current;
     App::current = this;
-    showNotification(new Notification(options));
+
+    NotificationOptions resolved = options;
+    if (canRaiseNotificationOverlay()) {
+        // Over a hidden browser the window passes every click through to the
+        // simulator, so nothing on the toast can be clicked. Drawing a close
+        // button there would offer an affordance that does nothing, and a
+        // notification that waits to be dismissed would then never leave.
+        resolved.dismissible = false;
+        if (resolved.timeoutSeconds <= 0.0f) {
+            resolved.timeoutSeconds = Notification::defaultOptions().timeoutSeconds;
+        }
+    }
+
+    showNotification(new Notification(resolved));
     App::current = previous;
 }
 
@@ -409,6 +451,54 @@ void App::clearNotification() {
     notification = nullptr;
     delete oldNotification;
     App::current = previous;
+
+    setNotificationOverlay(false);
+}
+
+// setNotificationOverlay puts the X-Plane window on screen without opening the
+// app, or takes it away again.
+//
+// `visible` keeps its meaning throughout: it is whether the browser is shown.
+// Every input handler already refuses to act when it is false, so an overlay
+// window is click-through by construction and cannot steal a cockpit click --
+// which is the property that makes showing it at all acceptable.
+void App::setNotificationOverlay(bool active) {
+    if (notificationOverlay == active) {
+        return;
+    }
+
+    if (active && !canRaiseNotificationOverlay()) {
+        return;
+    }
+
+    notificationOverlay = active;
+
+    if (!window) {
+        return;
+    }
+
+    if (active) {
+        XPLMSetWindowIsVisible(window, 1);
+        XPLMBringWindowToFront(window);
+        syncWindowGeometry(false);
+    }
+    else if (!visible) {
+        XPLMSetWindowIsVisible(window, 0);
+    }
+}
+
+bool App::hasNotificationOverlay() const {
+    return notificationOverlay;
+}
+
+// A notification can bring its own window only if the app draws its own chrome.
+// Decoration is fixed when the window is created, so a titled app cannot drop
+// its frame for one toast -- showing its window would put an empty X-Plane
+// panel on screen with a notification inside it. Those apps keep the older
+// behaviour, where notifications appear while the app is open, rather than
+// getting a worse-looking version of the new one.
+bool App::canRaiseNotificationOverlay() const {
+    return !visible && config.window_titleless;
 }
 
 NotificationOptions App::defaultNotificationOptions() const {
@@ -601,6 +691,17 @@ void App::registerWindow() {
     params.handleCursorFunc = [](XPLMWindowID inWindowID, int x, int y, void* inRefcon) -> XPLMCursorStatus {
         App *app = static_cast<App*>(inRefcon);
         App::current = app;
+
+        // The other input handlers already stand down when the browser is
+        // hidden; this one did not need to, because a hidden app had no window
+        // for the simulator to route the cursor to. A notification-only window
+        // does, and without this the pointer would drive a page nobody can see
+        // and pick up hover cursors over empty cockpit.
+        if (!app->visible) {
+            app->activeCursor = CursorDefault;
+            App::current = nullptr;
+            return xplm_CursorDefault;
+        }
 
         float mouseX, mouseY;
         if (!app->normalizeWindowPoint(x, y, &mouseX, &mouseY)) {

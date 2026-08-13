@@ -52,6 +52,13 @@ SkyScriptAppConfig skyscript_default_config(void) {
     c.width = cpp.width;
     c.height = cpp.height;
     c.console_logging = cpp.console_logging ? 1 : 0;
+    c.window_titleless = cpp.window_titleless ? 1 : 0;
+    c.window_opacity = cpp.window_opacity;
+    c.notification_corner = toCCorner(cpp.notification_corner);
+    c.notification_timeout = cpp.notification_timeout;
+    c.notification_opacity = cpp.notification_opacity;
+    c.notification_slide_seconds = cpp.notification_slide_seconds;
+    c.notification_sound = cpp.notification_sound ? 1 : 0;
     return c;
 }
 
@@ -111,6 +118,18 @@ SkyScriptApp skyscript_create_app_window(const char* name, const char* id, const
         cpp.width = config->width;
         cpp.height = config->height;
         cpp.console_logging = config->console_logging != 0;
+        cpp.window_titleless = config->window_titleless != 0;
+        // Zero is not an opacity anyone asks for, and a caller that zeroed the
+        // struct did not choose it. Notification options already read it the
+        // same way.
+        if (config->window_opacity > 0.0f) {
+            cpp.window_opacity = config->window_opacity;
+        }
+        cpp.notification_corner = toCppCorner(config->notification_corner);
+        cpp.notification_timeout = config->notification_timeout;
+        cpp.notification_opacity = config->notification_opacity;
+        cpp.notification_slide_seconds = config->notification_slide_seconds;
+        cpp.notification_sound = config->notification_sound != 0;
         return static_cast<SkyScriptApp>(SkyScript::createAppWindow(name, id, cpp));
     }
     return static_cast<SkyScriptApp>(SkyScript::createAppWindow(name, id));

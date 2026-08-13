@@ -64,6 +64,9 @@ private:
     std::vector<DelayedTask> tasks;
     std::vector<Button *> buttons;
     Notification *notification;
+    // True while the X-Plane window is up solely to draw a notification, with
+    // the browser hidden. See setNotificationOverlay.
+    bool notificationOverlay;
     bool windowDragActive;
     int windowDragStartX;
     int windowDragStartY;
@@ -74,6 +77,12 @@ private:
     bool setViewport(int x, int y, unsigned short width, unsigned short height);
     void drawWindowBackground();
     bool isWindowDragRegion(float normalizedX, float normalizedY) const;
+    // Raise or drop the notification-only window. Raising shows the X-Plane
+    // window without showing the browser, so draw() paints the toast and
+    // nothing else; dropping hides it again unless the browser is up.
+    void setNotificationOverlay(bool active);
+    // Whether a notification raised right now would carry its own window.
+    bool canRaiseNotificationOverlay() const;
 
 public:
     static App* current;
@@ -124,6 +133,10 @@ public:
     void showNotification(const NotificationOptions& options);
     void dismissNotification();
     void clearNotification();
+    // True while a notification is being drawn over a hidden browser. Input is
+    // passed straight through to the simulator in that state, so the toast is
+    // presentation only.
+    bool hasNotificationOverlay() const;
     NotificationOptions defaultNotificationOptions() const;
     void executeDelayed(CallbackFunc func, float delaySeconds);
 

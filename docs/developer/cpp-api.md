@@ -98,7 +98,21 @@ Create a browser window manually (outside of `skyscript_load_apps_from_directory
 SkyScriptAppConfig skyscript_default_config(void);
 ```
 
-Returns a default-initialized `SkyScriptAppConfig` struct.
+Returns a default-initialized `SkyScriptAppConfig` struct. Start from this rather than zero-initializing: a zeroed struct reads as "titled window, silent notifications, zero timeout", which are choices rather than defaults.
+
+Besides the browser settings, the struct carries the window's chrome and the defaults for notifications raised on it:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `window_titleless` | `1` | Draw the app's own chrome — a translucent background and a top drag strip — instead of an X-Plane title bar. Required for [notifications with the app closed](#notifications-with-the-app-closed). |
+| `window_opacity` | `0.96` | Window background opacity. `0` means the default. |
+| `notification_corner` | `SKYSCRIPT_NOTIFICATION_TOP_RIGHT` | Corner notifications slide from. |
+| `notification_timeout` | `5` | Seconds before auto-dismiss. `0` keeps notifications up until dismissed. |
+| `notification_opacity` | `0.78` | Panel opacity. `0` means the default. |
+| `notification_slide_seconds` | `0.25` | Slide-in and slide-out duration. `0` means the default. |
+| `notification_sound` | `1` | Play the bundled notification sound. |
+
+Each `notification_*` value is the app's default and is overridable per notification through `SkyScriptNotificationOptions`.
 
 ### `skyscript_destroy_app_window()`
 
@@ -189,6 +203,17 @@ Show or hide the app window. Pass `NULL` for `url` to show the current page.
 ## Notifications
 
 SkyScript exposes native toast notifications for app windows. A notification slides in from a configurable corner, renders as a translucent panel, and can auto-dismiss after a timeout.
+
+### Notifications with the app closed
+
+A notification is shown whether or not its app window is open. With the app closed, SkyScript puts the window on screen carrying the notification and nothing else — no window background and no page — and takes it away again when the notification finishes.
+
+Two consequences worth knowing before you rely on it:
+
+- **The toast is presentation only in this state.** The window passes every mouse click, scroll and keypress straight through to the simulator, so it can never steal a cockpit click. Because nothing on it can be clicked, `dismissible` is forced off and a `timeout_seconds` of `0` is replaced with the default — otherwise the notification would wait forever for a dismissal that cannot arrive.
+- **It requires a self-decorated window** (`window_titleless`, the default since v0.9.0). Decoration is fixed when a window is created, so a titled app cannot drop its frame for one toast; showing its window would put an empty X-Plane panel on screen with a notification inside it. Titled apps keep the earlier behaviour, where notifications appear while the app is open.
+
+The toast is positioned in the configured corner of the app's window, which is where it appears whether the app is open or closed.
 
 ### `skyscript_default_notification_options()`
 

@@ -137,9 +137,16 @@ float flightLoopCallback(float inElapsedSinceLastCall, float inElapsedTimeSinceL
     for (auto* app : managedApps) {
         app->update();
 
-        if (app->visible) {
+        // A notification-only window is not "visible" -- its browser is hidden
+        // -- but it is on screen and animating, and its notification's timeout
+        // and slide-out are driven from update(). Left on the slow interval a
+        // toast would outstay its timeout by up to two seconds and then leave
+        // an empty window behind it.
+        if (app->visible || app->hasNotificationOverlay()) {
             anyVisible = true;
+        }
 
+        if (app->visible) {
             App::current = app;
             if (app->browser && app->window) {
                 bool hasKeyboardFocus = XPLMHasKeyboardFocus(app->window) != 0;
