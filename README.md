@@ -1,6 +1,6 @@
 # SkyScript
 
-SkyScript is a **reusable C/C++ library** for rendering web content (HTML/React apps) inside X-Plane 12 floating windows using CEF (Chromium Embedded Framework). It provides a JavaScript API bridge for apps to interact with X-Plane datarefs and supports both desktop and VR modes.
+SkyScript is a **reusable C/C++ library** for rendering web content (HTML/React apps) inside X-Plane 12 floating windows using CEF (Chromium Embedded Framework). It provides a JavaScript API bridge for apps to interact with X-Plane datarefs, native slide-out notifications, and both desktop and VR modes.
 
 The library is distributed as a **shared library** (`.dll` on Windows, `.dylib` on macOS, `.so` on Linux) with a stable **C API**, allowing downstream plugins to link against it without C++ ABI coupling. This means plugins can be built with any toolchain — MSVC, MinGW, GCC, or Clang.
 
@@ -66,6 +66,17 @@ Additional C API:
 | `skyscript_get_app_window_at(index)` | Get app window by index |
 | `skyscript_get_active_app()` / `skyscript_set_active_app(app)` | Active (most recently shown) app |
 | `skyscript_find_app(id)` | Find an app by its id |
+| `skyscript_app_show_notification(app, options)` | Show a native slide-out notification |
+| `skyscript_app_dismiss_notification(app)` | Dismiss the current notification |
+
+Web apps can use the injected notification hooks:
+
+```js
+await skyscript.notify('Route imported', 'KSFO to KSEA is ready.', {
+  corner: 'bottom-right',
+  timeoutSeconds: 4
+});
+```
 
 ## Runtime Dataref/Command
 

@@ -129,6 +129,28 @@ type AppConfig struct {
 	ConsoleLogging bool
 }
 
+// NotificationCorner controls which window corner a notification slides from.
+type NotificationCorner int
+
+const (
+	NotificationTopLeft NotificationCorner = iota
+	NotificationTopRight
+	NotificationBottomLeft
+	NotificationBottomRight
+)
+
+// NotificationOptions configures a native SkyScript notification toast.
+type NotificationOptions struct {
+	Title          string
+	Body           string
+	Corner         NotificationCorner
+	TimeoutSeconds float32
+	Opacity        float32
+	SlideSeconds   float32
+	Dismissible    bool
+	PlaySound      bool
+}
+
 // DefaultConfig returns the default app configuration.
 func DefaultConfig() AppConfig {
 	c := C.skyscript_default_config()
@@ -144,6 +166,21 @@ func DefaultConfig() AppConfig {
 		Width:          uint16(c.width),
 		Height:         uint16(c.height),
 		ConsoleLogging: c.console_logging != 0,
+	}
+}
+
+// DefaultNotificationOptions returns the default notification configuration.
+func DefaultNotificationOptions() NotificationOptions {
+	c := C.skyscript_default_notification_options()
+	return NotificationOptions{
+		Title:          C.GoString(c.title),
+		Body:           C.GoString(c.body),
+		Corner:         NotificationCorner(c.corner),
+		TimeoutSeconds: float32(c.timeout_seconds),
+		Opacity:        float32(c.opacity),
+		SlideSeconds:   float32(c.slide_seconds),
+		Dismissible:    c.dismissible != 0,
+		PlaySound:      c.play_sound != 0,
 	}
 }
 
@@ -265,6 +302,39 @@ func (a *App) Show(url string) {
 // Hide hides the browser window.
 func (a *App) Hide() {
 	C.skyscript_app_hide(a.handle)
+}
+
+// ShowNotification displays a native SkyScript notification toast.
+func (a *App) ShowNotification(options NotificationOptions) {
+	cTitle := C.CString(options.Title)
+	defer C.free(unsafe.Pointer(cTitle))
+	cBody := C.CString(options.Body)
+	defer C.free(unsafe.Pointer(cBody))
+
+	cOptions := C.SkyScriptNotificationOptions{
+		title:           cTitle,
+		body:            cBody,
+		corner:          C.SkyScriptNotificationCorner(options.Corner),
+		timeout_seconds: C.float(options.TimeoutSeconds),
+		opacity:         C.float(options.Opacity),
+		slide_seconds:   C.float(options.SlideSeconds),
+		dismissible:     boolToInt(options.Dismissible),
+		play_sound:      boolToInt(options.PlaySound),
+	}
+	C.skyscript_app_show_notification(a.handle, &cOptions)
+}
+
+// Notify displays a notification with default behavior.
+func (a *App) Notify(title, body string) {
+	options := DefaultNotificationOptions()
+	options.Title = title
+	options.Body = body
+	a.ShowNotification(options)
+}
+
+// DismissNotification slides out the current notification, if any.
+func (a *App) DismissNotification() {
+	C.skyscript_app_dismiss_notification(a.handle)
 }
 
 // OnMessage registers a handler for messages sent from JavaScript via

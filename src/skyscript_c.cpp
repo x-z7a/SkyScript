@@ -4,6 +4,38 @@
 #include <cstdlib>
 #include <string>
 
+namespace {
+NotificationCorner toCppCorner(SkyScriptNotificationCorner corner) {
+    switch (corner) {
+        case SKYSCRIPT_NOTIFICATION_TOP_LEFT:
+            return NotificationCorner::TopLeft;
+        case SKYSCRIPT_NOTIFICATION_TOP_RIGHT:
+            return NotificationCorner::TopRight;
+        case SKYSCRIPT_NOTIFICATION_BOTTOM_LEFT:
+            return NotificationCorner::BottomLeft;
+        case SKYSCRIPT_NOTIFICATION_BOTTOM_RIGHT:
+            return NotificationCorner::BottomRight;
+    }
+
+    return NotificationCorner::TopRight;
+}
+
+SkyScriptNotificationCorner toCCorner(NotificationCorner corner) {
+    switch (corner) {
+        case NotificationCorner::TopLeft:
+            return SKYSCRIPT_NOTIFICATION_TOP_LEFT;
+        case NotificationCorner::TopRight:
+            return SKYSCRIPT_NOTIFICATION_TOP_RIGHT;
+        case NotificationCorner::BottomLeft:
+            return SKYSCRIPT_NOTIFICATION_BOTTOM_LEFT;
+        case NotificationCorner::BottomRight:
+            return SKYSCRIPT_NOTIFICATION_BOTTOM_RIGHT;
+    }
+
+    return SKYSCRIPT_NOTIFICATION_TOP_RIGHT;
+}
+}
+
 extern "C" {
 
 SkyScriptAppConfig skyscript_default_config(void) {
@@ -20,6 +52,20 @@ SkyScriptAppConfig skyscript_default_config(void) {
     c.width = cpp.width;
     c.height = cpp.height;
     c.console_logging = cpp.console_logging ? 1 : 0;
+    return c;
+}
+
+SkyScriptNotificationOptions skyscript_default_notification_options(void) {
+    NotificationOptions cpp = Notification::defaultOptions();
+    SkyScriptNotificationOptions c = {};
+    c.title = "";
+    c.body = "";
+    c.corner = toCCorner(cpp.corner);
+    c.timeout_seconds = cpp.timeoutSeconds;
+    c.opacity = cpp.opacity;
+    c.slide_seconds = cpp.slideSeconds;
+    c.dismissible = cpp.dismissible ? 1 : 0;
+    c.play_sound = cpp.playSound ? 1 : 0;
     return c;
 }
 
@@ -53,7 +99,7 @@ void skyscript_reload_apps(void) {
 
 SkyScriptApp skyscript_create_app_window(const char* name, const char* id, const SkyScriptAppConfig* config) {
     if (config) {
-        AppConfiguration cpp;
+        AppConfiguration cpp = App::defaultConfig();
         cpp.homepage = config->homepage ? config->homepage : "";
         cpp.audio_muted = config->audio_muted != 0;
         cpp.minimum_width = config->minimum_width;
@@ -131,6 +177,28 @@ void skyscript_app_show(SkyScriptApp app, const char* url) {
 void skyscript_app_hide(SkyScriptApp app) {
     if (app) {
         static_cast<App*>(app)->hideBrowser();
+    }
+}
+
+void skyscript_app_show_notification(SkyScriptApp app, const SkyScriptNotificationOptions* options) {
+    if (!app || !options) return;
+
+    App *cppApp = static_cast<App*>(app);
+    NotificationOptions cpp = cppApp->defaultNotificationOptions();
+    cpp.title = options->title ? options->title : "";
+    cpp.body = options->body ? options->body : "";
+    cpp.corner = toCppCorner(options->corner);
+    cpp.timeoutSeconds = options->timeout_seconds;
+    cpp.opacity = options->opacity;
+    cpp.slideSeconds = options->slide_seconds;
+    cpp.dismissible = options->dismissible != 0;
+    cpp.playSound = options->play_sound != 0;
+    cppApp->showNotification(cpp);
+}
+
+void skyscript_app_dismiss_notification(SkyScriptApp app) {
+    if (app) {
+        static_cast<App*>(app)->dismissNotification();
     }
 }
 

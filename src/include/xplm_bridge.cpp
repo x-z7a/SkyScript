@@ -1,6 +1,9 @@
 #include "xplm_bridge.h"
+
+#include "app.h"
 #include "dataref.h"
 #include "config.h"
+#include "json.hpp"
 #include "path.h"
 
 #include <filesystem>
@@ -30,6 +33,10 @@ void XplmBridge::processPendingRequests() {
             handleExecuteCommand(req);
         } else if (req.action == "postMessage") {
             handlePostMessage(req);
+        } else if (req.action == "showNotification") {
+            handleShowNotification(req);
+        } else if (req.action == "dismissNotification") {
+            handleDismissNotification(req);
         } else if (req.action == "fsReadFile") {
             handleFsReadFile(req);
         } else if (req.action == "fsWriteFile") {
@@ -161,6 +168,74 @@ void XplmBridge::handlePostMessage(const XplmRequest& req) {
         // response is already a JSON value string (could be object, array, string, number, etc.)
         respond(req, response);
     }
+}
+
+void XplmBridge::handleShowNotification(const XplmRequest& req) {
+    if (!App::current) {
+        respond(req, "\"No active app for notification\"", true);
+        return;
+    }
+
+    NotificationOptions options = App::current->defaultNotificationOptions();
+
+    if (!req.payload.empty() && req.payload != "null") {
+        nlohmann::json json = nlohmann::json::parse(req.payload, nullptr, false);
+        if (json.is_discarded() || !json.is_object()) {
+            respond(req, "\"Notification options must be a JSON object\"", true);
+            return;
+        }
+
+        if (json.contains("title") && json["title"].is_string()) {
+            options.title = json["title"].get<std::string>();
+        }
+        if (json.contains("body") && json["body"].is_string()) {
+            options.body = json["body"].get<std::string>();
+        }
+        else if (json.contains("message") && json["message"].is_string()) {
+            options.body = json["message"].get<std::string>();
+        }
+        if (json.contains("corner") && json["corner"].is_string()) {
+            options.corner = NotificationCornerFromString(json["corner"].get<std::string>(), options.corner);
+        }
+        else if (json.contains("location") && json["location"].is_string()) {
+            options.corner = NotificationCornerFromString(json["location"].get<std::string>(), options.corner);
+        }
+        if (json.contains("timeoutSeconds") && json["timeoutSeconds"].is_number()) {
+            options.timeoutSeconds = json["timeoutSeconds"].get<float>();
+        }
+        else if (json.contains("timeout") && json["timeout"].is_number()) {
+            options.timeoutSeconds = json["timeout"].get<float>();
+        }
+        if (json.contains("opacity") && json["opacity"].is_number()) {
+            options.opacity = json["opacity"].get<float>();
+        }
+        if (json.contains("slideSeconds") && json["slideSeconds"].is_number()) {
+            options.slideSeconds = json["slideSeconds"].get<float>();
+        }
+        else if (json.contains("slide_seconds") && json["slide_seconds"].is_number()) {
+            options.slideSeconds = json["slide_seconds"].get<float>();
+        }
+        if (json.contains("dismissible") && json["dismissible"].is_boolean()) {
+            options.dismissible = json["dismissible"].get<bool>();
+        }
+        if (json.contains("playSound") && json["playSound"].is_boolean()) {
+            options.playSound = json["playSound"].get<bool>();
+        }
+        else if (json.contains("sound") && json["sound"].is_boolean()) {
+            options.playSound = json["sound"].get<bool>();
+        }
+    }
+
+    App::current->showNotification(options);
+    respond(req, "undefined");
+}
+
+void XplmBridge::handleDismissNotification(const XplmRequest& req) {
+    if (App::current) {
+        App::current->dismissNotification();
+    }
+
+    respond(req, "undefined");
 }
 
 void XplmBridge::handleFsReadFile(const XplmRequest& req) {
@@ -362,6 +437,7 @@ XplmRequest XplmBridge::parseRequestUrl(const std::string& url, CefRefPtr<CefBro
     // URL formats:
     //   skyscript://xplm/<action>?ref=...&callbackId=...&value=...&valueType=...
     //   skyscript://message/postMessage?channel=...&payload=...&callbackId=...
+    //   skyscript://notification/<action>?payload=...&callbackId=...
     //   skyscript://fs/<action>?ref=...&callbackId=...&value=...
     std::string remainder = url.substr(std::string("skyscript://").length());
 
@@ -397,6 +473,8 @@ XplmRequest XplmBridge::parseRequestUrl(const std::string& url, CefRefPtr<CefBro
         req.action = pathPart.substr(std::string("xplm/").length());
     } else if (pathPart.starts_with("message/")) {
         req.action = pathPart.substr(std::string("message/").length());
+    } else if (pathPart.starts_with("notification/")) {
+        req.action = pathPart.substr(std::string("notification/").length());
     } else if (pathPart.starts_with("fs/")) {
         req.action = pathPart.substr(std::string("fs/").length());
     } else {
@@ -486,6 +564,32 @@ std::string XplmBridge::getInjectionScript() {
             window.skyscript._messageListeners[channel] = [];
         }
         window.skyscript._messageListeners[channel].push(callback);
+    };
+
+    window.skyscript.notification = {
+        show: function(options) {
+            var config = options || {};
+            if (typeof config === 'string') {
+                config = { body: config };
+            }
+            return sendRequest('notification', 'showNotification', { payload: JSON.stringify(config) });
+        },
+        dismiss: function() {
+            return sendRequest('notification', 'dismissNotification', {});
+        }
+    };
+
+    window.skyscript.notify = function(titleOrOptions, body, options) {
+        if (typeof titleOrOptions === 'object' && titleOrOptions !== null) {
+            return window.skyscript.notification.show(titleOrOptions);
+        }
+
+        var config = Object.assign({}, options || {});
+        config.title = titleOrOptions === undefined ? '' : String(titleOrOptions);
+        if (body !== undefined) {
+            config.body = String(body);
+        }
+        return window.skyscript.notification.show(config);
     };
 
     window.skyscript.fs = {

@@ -265,6 +265,18 @@ App* findApp(const std::string& id) {
     return nullptr;
 }
 
+void showNotification(App* app, const NotificationOptions& options) {
+    if (app) {
+        app->showNotification(options);
+    }
+}
+
+void dismissNotification(App* app) {
+    if (app) {
+        app->dismissNotification();
+    }
+}
+
 void destroyAllAppWindows() {
     Dataref::getInstance()->destroyAllBindings();
     for (auto* app : managedApps) {

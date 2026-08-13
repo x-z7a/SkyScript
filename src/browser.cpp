@@ -9,6 +9,7 @@
 #include "path.h"
 #include "xplm_bridge.h"
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -469,10 +470,12 @@ void Browser::draw() {
     int y2 = viewport.y + viewport.height * offsetEnd;
 
     glBegin(GL_QUADS);
-    set_brightness(App::current->brightness);
+    App* app = App::current;
+    float alpha = app->config.window_titleless ? std::clamp(app->config.window_opacity, 0.2f, 1.0f) : 1.0f;
+    glColor4f(app->brightness, app->brightness, app->brightness, alpha);
 
-    float u = (float) viewport.browserWidth / viewport.textureWidth;
-    float v = (float) viewport.browserHeight / viewport.textureHeight;
+    float u = (float)viewport.browserWidth / viewport.textureWidth;
+    float v = (float)viewport.browserHeight / viewport.textureHeight;
 
     glTexCoord2f(0, v);
     glVertex2f(x1, y1);

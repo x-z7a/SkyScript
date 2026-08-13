@@ -11,7 +11,7 @@
 #include <include/cef_browser.h>
 
 struct XplmRequest {
-    std::string action;      // "getDataref", "setDataref", "executeCommand", "postMessage", "fsReadFile", "fsWriteFile", "fsListDir", "fsExists"
+    std::string action;      // "getDataref", "setDataref", "executeCommand", "postMessage", "showNotification", "dismissNotification", "fsReadFile", "fsWriteFile", "fsListDir", "fsExists"
     std::string ref;         // dataref path or command path
     std::string value;       // for setDataref: stringified value; for fs: content/path
     std::string valueType;   // "int", "float", "double", "string"
@@ -57,6 +57,8 @@ private:
     void handleSetDataref(const XplmRequest& req);
     void handleExecuteCommand(const XplmRequest& req);
     void handlePostMessage(const XplmRequest& req);
+    void handleShowNotification(const XplmRequest& req);
+    void handleDismissNotification(const XplmRequest& req);
     void handleFsReadFile(const XplmRequest& req);
     void handleFsWriteFile(const XplmRequest& req);
     void handleFsListDir(const XplmRequest& req);

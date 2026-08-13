@@ -36,8 +36,29 @@ typedef struct {
     int console_logging;         /* 1 = forward console.log to Log.txt */
 } SkyScriptAppConfig;
 
+typedef enum {
+    SKYSCRIPT_NOTIFICATION_TOP_LEFT = 0,
+    SKYSCRIPT_NOTIFICATION_TOP_RIGHT = 1,
+    SKYSCRIPT_NOTIFICATION_BOTTOM_LEFT = 2,
+    SKYSCRIPT_NOTIFICATION_BOTTOM_RIGHT = 3
+} SkyScriptNotificationCorner;
+
+typedef struct {
+    const char* title;           /* Optional title, or NULL */
+    const char* body;            /* Optional body text, or NULL */
+    SkyScriptNotificationCorner corner;
+    float timeout_seconds;       /* 0 = stay until dismissed */
+    float opacity;               /* 0.15 to 0.95; 0 = default */
+    float slide_seconds;         /* Slide-in/out duration; 0 = default */
+    int dismissible;             /* 1 = show close affordance */
+    int play_sound;              /* 1 = play bundled notification sound */
+} SkyScriptNotificationOptions;
+
 /* Returns a default-initialized config. */
 SKYSCRIPT_API SkyScriptAppConfig skyscript_default_config(void);
+
+/* Returns default notification options. */
+SKYSCRIPT_API SkyScriptNotificationOptions skyscript_default_notification_options(void);
 
 /* Lifecycle */
 SKYSCRIPT_API void skyscript_initialize(void);
@@ -75,6 +96,10 @@ SKYSCRIPT_API const char* skyscript_app_get_id(SkyScriptApp app);
 SKYSCRIPT_API int skyscript_app_is_visible(SkyScriptApp app);
 SKYSCRIPT_API void skyscript_app_show(SkyScriptApp app, const char* url);
 SKYSCRIPT_API void skyscript_app_hide(SkyScriptApp app);
+
+/* Notifications */
+SKYSCRIPT_API void skyscript_app_show_notification(SkyScriptApp app, const SkyScriptNotificationOptions* options);
+SKYSCRIPT_API void skyscript_app_dismiss_notification(SkyScriptApp app);
 
 /* Message passing — JS ↔ Plugin communication.
 
