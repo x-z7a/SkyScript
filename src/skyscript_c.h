@@ -86,8 +86,18 @@ SKYSCRIPT_API void skyscript_app_hide(SkyScriptApp app);
    *out_error to a non-NULL error string (caller frees) to reject
    the JS Promise.
 
+   The handler is invoked on the thread that pumps SkyScript (the X-Plane
+   flight loop) and must return promptly: it blocks that frame. A plugin whose
+   answer comes from somewhere slow — a socket, a file, another process —
+   should return a receipt here and deliver the result later with
+   skyscript_app_post_message.
+
    skyscript_app_post_message pushes a JSON payload to all JS listeners
-   registered via window.skyscript.onMessage(channel, callback). */
+   registered via window.skyscript.onMessage(channel, callback).
+
+   It may be called from any thread. The message is queued and delivered on the
+   next flight loop, so a worker thread never touches CEF directly. The payload
+   must be a JSON document: it is parsed in the page, not evaluated. */
 typedef void (*SkyScriptMessageCallback)(
     const char* channel,
     const char* payload,

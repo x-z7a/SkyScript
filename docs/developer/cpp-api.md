@@ -215,6 +215,12 @@ The handler receives the JSON payload string and must set either `*out_response`
 - Set `*out_response` to a `malloc`'d JSON string on success (SkyScript frees it).
 - Set `*out_error` to a `malloc`'d error string on failure (SkyScript frees it).
 
+The handler runs on the simulator's main thread and blocks that frame until it
+returns, so it must not wait on anything slow. If the answer comes from a
+socket, a file, or another process, return a receipt immediately and deliver the
+result later with [`skyscript_app_post_message()`](#skyscript_app_post_message),
+correlating the two with an id of your own.
+
 **Example:**
 
 ```c
@@ -233,6 +239,13 @@ void skyscript_app_post_message(SkyScriptApp app, const char* channel, const cha
 ```
 
 Push a message from the plugin to JavaScript. All JS listeners registered via `window.skyscript.onMessage(channel, callback)` will be called with the parsed payload.
+
+**Threading:** safe to call from any thread. The message is queued and delivered
+on the next flight loop, so a worker thread never touches CEF directly.
+
+**Payload:** must be a JSON document. It is parsed in the page with
+`JSON.parse`, not evaluated. A payload that is not valid JSON is dropped with a
+`console.error` rather than executed.
 
 ### Go Bindings
 
