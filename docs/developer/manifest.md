@@ -28,6 +28,8 @@ framerate: 20
 | `console_logging` | boolean | `true` | Forward `console.log`/`warn`/`error` to X-Plane's `Log.txt`. Set to `false` for noisy apps. |
 | `default` | boolean | `false` | Default apps appear after a separator in the menu. Used for built-in apps like "About SkyScript". |
 
+Local apps are served through an app-specific `https://*.skyscript.local/` origin at runtime. This keeps pure client apps compatible with modern browser features such as ES modules while still loading files from the app folder.
+
 ## Minimal Manifests
 
 ### Local app (with `index.html`)
