@@ -115,6 +115,10 @@ type App struct {
 }
 
 // AppConfig configures a new browser window.
+//
+// Build one from DefaultConfig rather than a zero value: a zeroed AppConfig
+// reads as "titled window, silent notifications", which are choices rather than
+// defaults.
 type AppConfig struct {
 	Homepage       string
 	AudioMuted     bool
@@ -127,6 +131,20 @@ type AppConfig struct {
 	Width          uint16
 	Height         uint16
 	ConsoleLogging bool
+
+	// WindowTitleless draws the window's own chrome -- a translucent background
+	// and a drag strip along the top -- instead of an X-Plane title bar.
+	WindowTitleless bool
+	// WindowOpacity is the window background opacity. Zero means the default.
+	WindowOpacity float32
+
+	// Defaults for notifications raised on this window. Each is overridable per
+	// notification via NotificationOptions.
+	NotificationCorner       NotificationCorner
+	NotificationTimeoutSecs  float32
+	NotificationOpacity      float32
+	NotificationSlideSeconds float32
+	NotificationSound        bool
 }
 
 // NotificationCorner controls which window corner a notification slides from.
@@ -166,6 +184,15 @@ func DefaultConfig() AppConfig {
 		Width:          uint16(c.width),
 		Height:         uint16(c.height),
 		ConsoleLogging: c.console_logging != 0,
+
+		WindowTitleless: c.window_titleless != 0,
+		WindowOpacity:   float32(c.window_opacity),
+
+		NotificationCorner:       NotificationCorner(c.notification_corner),
+		NotificationTimeoutSecs:  float32(c.notification_timeout),
+		NotificationOpacity:      float32(c.notification_opacity),
+		NotificationSlideSeconds: float32(c.notification_slide_seconds),
+		NotificationSound:        c.notification_sound != 0,
 	}
 }
 
@@ -220,6 +247,15 @@ func CreateAppWindow(name, id string, config *AppConfig) *App {
 			width:           C.ushort(config.Width),
 			height:          C.ushort(config.Height),
 			console_logging: boolToInt(config.ConsoleLogging),
+
+			window_titleless: boolToInt(config.WindowTitleless),
+			window_opacity:   C.float(config.WindowOpacity),
+
+			notification_corner:        C.SkyScriptNotificationCorner(config.NotificationCorner),
+			notification_timeout:       C.float(config.NotificationTimeoutSecs),
+			notification_opacity:       C.float(config.NotificationOpacity),
+			notification_slide_seconds: C.float(config.NotificationSlideSeconds),
+			notification_sound:         boolToInt(config.NotificationSound),
 		}
 		handle = C.skyscript_create_app_window(cName, cID, &cc)
 	} else {

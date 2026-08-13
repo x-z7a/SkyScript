@@ -21,7 +21,18 @@ extern "C" {
 /* Opaque handle to an App window. */
 typedef void* SkyScriptApp;
 
-/* App configuration for creating windows. */
+typedef enum {
+    SKYSCRIPT_NOTIFICATION_TOP_LEFT = 0,
+    SKYSCRIPT_NOTIFICATION_TOP_RIGHT = 1,
+    SKYSCRIPT_NOTIFICATION_BOTTOM_LEFT = 2,
+    SKYSCRIPT_NOTIFICATION_BOTTOM_RIGHT = 3
+} SkyScriptNotificationCorner;
+
+/* App configuration for creating windows.
+ *
+ * Start from skyscript_default_config() rather than zero-initializing: a zeroed
+ * struct reads as "titled window, no notification sound, zero timeout", which
+ * are choices rather than defaults. */
 typedef struct {
     const char* homepage;        /* URL to load, or NULL for default */
     int audio_muted;             /* 1 = muted, 0 = unmuted */
@@ -34,14 +45,18 @@ typedef struct {
     unsigned short width;        /* Initial window width (0 = default 1024) */
     unsigned short height;       /* Initial window height (0 = default 768) */
     int console_logging;         /* 1 = forward console.log to Log.txt */
+    /* Window chrome. Titleless windows draw their own background and carry a
+       drag strip along the top instead of an X-Plane title bar. */
+    int window_titleless;        /* 1 = self-decorated, 0 = X-Plane title bar */
+    float window_opacity;        /* Background opacity; 0 = default */
+    /* Defaults for notifications raised on this window. Each is overridable per
+       notification via SkyScriptNotificationOptions. */
+    SkyScriptNotificationCorner notification_corner;
+    float notification_timeout;  /* Seconds; 0 = stay until dismissed */
+    float notification_opacity;  /* 0.15 to 0.95; 0 = default */
+    float notification_slide_seconds; /* Slide-in/out duration; 0 = default */
+    int notification_sound;      /* 1 = play the bundled notification sound */
 } SkyScriptAppConfig;
-
-typedef enum {
-    SKYSCRIPT_NOTIFICATION_TOP_LEFT = 0,
-    SKYSCRIPT_NOTIFICATION_TOP_RIGHT = 1,
-    SKYSCRIPT_NOTIFICATION_BOTTOM_LEFT = 2,
-    SKYSCRIPT_NOTIFICATION_BOTTOM_RIGHT = 3
-} SkyScriptNotificationCorner;
 
 typedef struct {
     const char* title;           /* Optional title, or NULL */

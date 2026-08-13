@@ -186,6 +186,8 @@ Multiple listeners can be registered on the same channel. They are called in reg
 
 SkyScript can show a native toast inside the app window. Notifications slide in from a configurable corner, use a translucent panel, and can auto-dismiss after a timeout.
 
+A notification is shown whether or not the app window is open: with the app closed, SkyScript puts the window on screen carrying the toast alone and takes it away again afterwards. In that state the toast is presentation only — every click passes through to the simulator, so `dismissible` is forced off and a `timeoutSeconds` of `0` is replaced with the default rather than waiting forever for a dismissal that cannot arrive. It also requires a self-decorated window (`window_titleless`, the default); titled apps show notifications only while open. See the [C API notes](./cpp-api.md#notifications-with-the-app-closed) for the reasoning.
+
 #### `notification.show(options)`
 
 ```ts
