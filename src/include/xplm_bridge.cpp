@@ -42,6 +42,19 @@ void XplmBridge::processPendingRequests() {
             respond(req, "\"Unknown action: " + req.action + "\"", true);
         }
     }
+
+    // Plugin-to-JS posts are drained here too, so they reach CEF on the same
+    // thread everything else does. Draining after the requests lets a message
+    // handler answer on this frame rather than the next one.
+    std::vector<PendingPost> posts;
+    {
+        std::lock_guard<std::mutex> lock(postsMutex);
+        posts.swap(pendingPosts);
+    }
+
+    for (const auto& post : posts) {
+        deliverPost(post);
+    }
 }
 
 void XplmBridge::handleGetDataref(const XplmRequest& req) {
@@ -237,25 +250,57 @@ void XplmBridge::onMessage(const std::string& channel, MessageHandler handler) {
 }
 
 void XplmBridge::postMessage(const std::string& channel, const std::string& payload) {
+    // Queued rather than delivered here. This is public API: a plugin may call
+    // it from a worker thread (a socket reader, a file loader), while
+    // lastBrowser is written on the main thread from OnAfterCreated and CEF
+    // wants ExecuteJavaScript on the thread CefDoMessageLoopWork runs on.
+    // Touching either from a caller's thread is a data race on a refcounted
+    // pointer. processPendingRequests drains this on the main thread, the same
+    // way requests coming the other way are already handled.
+    if (!browserReady.load(std::memory_order_acquire)) {
+        // Matches the previous behaviour: with no browser there is nothing to
+        // deliver to, and queueing would only replay a stale burst later.
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(postsMutex);
+    if (pendingPosts.size() >= kMaxPendingPosts) {
+        // A plugin posting faster than the sim draws must not grow this without
+        // bound. Drop the oldest: newer state is the state worth showing.
+        pendingPosts.erase(pendingPosts.begin());
+    }
+    pendingPosts.push_back({channel, payload});
+}
+
+void XplmBridge::deliverPost(const PendingPost& post) {
     if (!lastBrowser || !lastBrowser->GetMainFrame()) {
         return;
     }
 
-    std::string js = "if (window.skyscript && window.skyscript._messageListeners) {"
-                     "  var listeners = window.skyscript._messageListeners['" + escapeJsString(channel) + "'];"
-                     "  if (listeners) {"
-                     "    var payload = " + payload + ";"
-                     "    for (var i = 0; i < listeners.length; i++) {"
-                     "      try { listeners[i](payload); } catch(e) { console.error('skyscript onMessage error:', e); }"
-                     "    }"
+    // The payload is parsed, not interpolated. Concatenating it into the
+    // statement made every caller's payload executable script: a plugin passing
+    // anything that is not valid JSON - or JSON built from data it does not
+    // control - would have it run instead of parsed. JSON.parse also fails
+    // loudly on a malformed payload rather than producing a syntax error that
+    // silently takes the whole statement with it.
+    std::string js = "(function(){"
+                     "  if (!window.skyscript || !window.skyscript._messageListeners) return;"
+                     "  var listeners = window.skyscript._messageListeners['" + escapeJsString(post.channel) + "'];"
+                     "  if (!listeners) return;"
+                     "  var payload;"
+                     "  try { payload = JSON.parse('" + escapeJsString(post.payload) + "'); }"
+                     "  catch (e) { console.error('skyscript: postMessage payload is not valid JSON', e); return; }"
+                     "  for (var i = 0; i < listeners.length; i++) {"
+                     "    try { listeners[i](payload); } catch(e) { console.error('skyscript onMessage error:', e); }"
                      "  }"
-                     "}";
+                     "})();";
 
     lastBrowser->GetMainFrame()->ExecuteJavaScript(js, lastBrowser->GetMainFrame()->GetURL(), 0);
 }
 
 void XplmBridge::setBrowser(CefRefPtr<CefBrowser> browser) {
     lastBrowser = browser;
+    browserReady.store(browser != nullptr, std::memory_order_release);
 }
 
 std::string XplmBridge::escapeJsString(const std::string& str) {
