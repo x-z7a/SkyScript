@@ -12,7 +12,9 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <filesystem>
+#include <iomanip>
 #include <include/base/cef_bind.h>
 #include <include/base/cef_callback.h>
 #include <include/cef_app.h>
@@ -20,14 +22,18 @@
 #include <include/cef_browser.h>
 #include <include/cef_client.h>
 #include <include/cef_command_line.h>
+#include <include/cef_parser.h>
 #include <include/cef_render_handler.h>
 #include <include/cef_request_context_handler.h>
+#include <include/cef_scheme.h>
+#include <include/cef_stream.h>
 #include <include/cef_version.h>
 #include <include/wrapper/cef_closure_task.h>
 #include <include/wrapper/cef_helpers.h>
-#include <iomanip>
+#include <include/wrapper/cef_stream_resource_handler.h>
 #include <limits>
 #include <sstream>
+#include <string>
 #include <vector>
 #include <XPLMDisplay.h>
 #include <XPLMGraphics.h>
@@ -42,6 +48,194 @@
 #include "unix_keycodes.h"
 #endif
 
+namespace {
+
+constexpr const char* kLocalAppDomainSuffix = ".skyscript.local";
+
+std::string cefStringPart(const cef_string_t& value) {
+    return CefString(&value).ToString();
+}
+
+std::string sanitizeHostLabel(const std::string& value) {
+    std::string label;
+    for (char c : value) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        if (std::isalnum(uc)) {
+            label.push_back(static_cast<char>(std::tolower(uc)));
+        } else if (c == '-') {
+            label.push_back(c);
+        } else if (!label.empty() && label.back() != '-') {
+            label.push_back('-');
+        }
+    }
+
+    while (!label.empty() && label.front() == '-') {
+        label.erase(label.begin());
+    }
+    while (!label.empty() && label.back() == '-') {
+        label.pop_back();
+    }
+    return label.empty() ? "app" : label;
+}
+
+std::string localAppHostForId(const std::string& appId) {
+    return sanitizeHostLabel(appId) + kLocalAppDomainSuffix;
+}
+
+std::string percentEncodePath(const std::string& path) {
+    std::ostringstream encoded;
+    encoded << std::uppercase << std::hex;
+    for (unsigned char c : path) {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~' || c == '/') {
+            encoded << static_cast<char>(c);
+            continue;
+        }
+        encoded << '%' << std::setw(2) << std::setfill('0') << static_cast<int>(c);
+    }
+    return encoded.str();
+}
+
+bool hasParentTraversal(const std::filesystem::path& path) {
+    for (const auto& part : path) {
+        if (part == "..") {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool isWithinRoot(const std::filesystem::path& candidate, const std::filesystem::path& root) {
+    std::error_code ec;
+    std::filesystem::path relative = std::filesystem::relative(candidate, root, ec);
+    return !ec && !hasParentTraversal(relative);
+}
+
+cef_uri_unescape_rule_t pathUnescapeRules() {
+    return static_cast<cef_uri_unescape_rule_t>(UU_NORMAL | UU_SPACES | UU_PATH_SEPARATORS);
+}
+
+std::string mimeTypeForPath(const std::filesystem::path& path) {
+    std::string extension = path.extension().string();
+    if (!extension.empty() && extension.front() == '.') {
+        extension.erase(extension.begin());
+    }
+
+    std::string mimeType = CefGetMimeType(extension).ToString();
+    if (mimeType.empty()) {
+        mimeType = "application/octet-stream";
+    }
+    return mimeType;
+}
+
+CefRefPtr<CefResourceHandler> localTextResource(int statusCode, const std::string& statusText, const char* body) {
+    CefResponse::HeaderMap headers;
+    headers.insert(std::make_pair("Access-Control-Allow-Origin", "*"));
+
+    CefRefPtr<CefStreamReader> stream = CefStreamReader::CreateForData(
+        const_cast<char*>(body),
+        std::char_traits<char>::length(body));
+    return CefRefPtr<CefResourceHandler>(new CefStreamResourceHandler(statusCode, statusText, "text/plain", headers, stream));
+}
+
+bool parseFileUrl(const std::string& url, std::filesystem::path* filePath, std::string* query, std::string* fragment) {
+    CefURLParts parts;
+    if (!CefParseURL(url, parts)) {
+        return false;
+    }
+    if (cefStringPart(parts.scheme) != "file") {
+        return false;
+    }
+
+    std::string path = CefURIDecode(cefStringPart(parts.path), true, pathUnescapeRules()).ToString();
+#if IBM
+    if (path.size() >= 3 && path[0] == '/' && std::isalpha(static_cast<unsigned char>(path[1])) && path[2] == ':') {
+        path.erase(path.begin());
+    }
+#endif
+
+    if (path.empty()) {
+        return false;
+    }
+
+    *filePath = std::filesystem::path(path);
+    *query = cefStringPart(parts.query);
+    *fragment = cefStringPart(parts.fragment);
+    return true;
+}
+
+std::string localUrlForFile(const std::filesystem::path& filePath, const std::filesystem::path& root, const std::string& host, const std::string& query, const std::string& fragment) {
+    std::error_code ec;
+    std::filesystem::path canonicalFile = std::filesystem::weakly_canonical(filePath, ec);
+    std::filesystem::path relative;
+    if (!ec) {
+        relative = std::filesystem::relative(canonicalFile, root, ec);
+    }
+    if (ec || relative.empty() || hasParentTraversal(relative)) {
+        relative = filePath.filename();
+    }
+
+    std::string url = "https://" + host + "/" + percentEncodePath(relative.generic_string());
+    if (!query.empty()) {
+        url += "?" + query;
+    }
+    if (!fragment.empty()) {
+        url += "#" + fragment;
+    }
+    return url;
+}
+
+class LocalAppSchemeHandlerFactory : public CefSchemeHandlerFactory {
+public:
+    explicit LocalAppSchemeHandlerFactory(std::filesystem::path root)
+        : root(std::move(root)) {}
+
+    CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& schemeName, CefRefPtr<CefRequest> request) override {
+        (void)browser;
+        (void)frame;
+        (void)schemeName;
+
+        CefURLParts parts;
+        if (!CefParseURL(request->GetURL(), parts)) {
+            return localTextResource(404, "Not Found", "not found");
+        }
+
+        std::string path = CefURIDecode(cefStringPart(parts.path), true, pathUnescapeRules()).ToString();
+        if (path.empty() || path == "/") {
+            path = "/index.html";
+        }
+        if (!path.empty() && path.front() == '/') {
+            path.erase(path.begin());
+        }
+
+        std::filesystem::path relative(path);
+        if (relative.is_absolute() || hasParentTraversal(relative)) {
+            return localTextResource(404, "Not Found", "not found");
+        }
+
+        std::error_code ec;
+        std::filesystem::path candidate = std::filesystem::weakly_canonical(root / relative, ec);
+        if (ec || !isWithinRoot(candidate, root) || !std::filesystem::is_regular_file(candidate, ec)) {
+            return localTextResource(404, "Not Found", "not found");
+        }
+
+        CefRefPtr<CefStreamReader> stream = CefStreamReader::CreateForFile(candidate.string());
+        if (!stream) {
+            return localTextResource(404, "Not Found", "not found");
+        }
+
+        CefResponse::HeaderMap headers;
+        headers.insert(std::make_pair("Access-Control-Allow-Origin", "*"));
+        return CefRefPtr<CefResourceHandler>(new CefStreamResourceHandler(200, "OK", mimeTypeForPath(candidate), headers, stream));
+    }
+
+private:
+    std::filesystem::path root;
+
+    IMPLEMENT_REFCOUNTING(LocalAppSchemeHandlerFactory);
+};
+
+} // namespace
+
 Browser::Browser() {
     textureId = 0;
     offsetStart = 0.0f;
@@ -50,6 +244,7 @@ Browser::Browser() {
     backButton = nullptr;
     xplmBridge = new XplmBridge();
     handler = nullptr;
+    requestContext = nullptr;
     currentUrl = "";
 }
 
@@ -158,6 +353,9 @@ void Browser::destroy() {
         handler->destroy();
         handler = nullptr;
     }
+    requestContext = nullptr;
+    localAppHost.clear();
+    localAppRoot.clear();
 
     if (textureId) {
         XPLMBindTexture2d(textureId, 0);
@@ -321,13 +519,13 @@ void Browser::scroll(float normalizedX, float normalizedY, int clicks, bool hori
 
 void Browser::loadUrl(std::string url) {
     if (!textureId || !handler) {
-        currentUrl = url;
+        currentUrl = prepareUrlForLoad(url);
         return;
     }
 
-    currentUrl = url;
+    currentUrl = prepareUrlForLoad(url);
     if (handler->browserInstance) {
-        handler->browserInstance->GetMainFrame()->LoadURL(url);
+        handler->browserInstance->GetMainFrame()->LoadURL(currentUrl);
     }
 }
 
@@ -532,7 +730,8 @@ bool Browser::createBrowser() {
 
     context_settings.persist_user_preferences = true;
     context_settings.persist_session_cookies = true;
-    CefRefPtr<CefRequestContext> request_context = CefRequestContext::CreateContext(context_settings, nullptr);
+    requestContext = CefRequestContext::CreateContext(context_settings, nullptr);
+    currentUrl = prepareUrlForLoad(currentUrl);
 
     CefBrowserSettings browser_settings;
     browser_settings.windowless_frame_rate = app->config.framerate;
@@ -549,12 +748,48 @@ bool Browser::createBrowser() {
 #endif
     window_info.windowless_rendering_enabled = true;
 
-    bool browserCreated = CefBrowserHost::CreateBrowser(window_info, handler, currentUrl, browser_settings, nullptr, request_context);
+    bool browserCreated = CefBrowserHost::CreateBrowser(window_info, handler, currentUrl, browser_settings, nullptr, requestContext);
     if (!browserCreated) {
         app->showNotification(new Notification("Error creating browser", "An error occured while starting the browser.\nPlease verify if there are any updates for the " FRIENDLY_NAME " plugin and try again."));
     }
     debug("Browser for app '%s' created: %d\n", app->id.c_str(), browserCreated);
     return true;
+}
+
+void Browser::registerLocalAppRoot() {
+    if (!requestContext || localAppHost.empty() || localAppRoot.empty()) {
+        return;
+    }
+
+    requestContext->RegisterSchemeHandlerFactory(
+        "https",
+        localAppHost,
+        CefRefPtr<CefSchemeHandlerFactory>(new LocalAppSchemeHandlerFactory(localAppRoot)));
+}
+
+std::string Browser::prepareUrlForLoad(const std::string& url) {
+    App *app = App::current;
+    if (!app) {
+        return url;
+    }
+
+    std::filesystem::path filePath;
+    std::string query;
+    std::string fragment;
+    if (!parseFileUrl(url, &filePath, &query, &fragment)) {
+        return url;
+    }
+
+    std::error_code ec;
+    std::filesystem::path root = std::filesystem::weakly_canonical(filePath.parent_path(), ec);
+    if (ec || root.empty()) {
+        return url;
+    }
+
+    localAppHost = localAppHostForId(app->id);
+    localAppRoot = root;
+    registerLocalAppRoot();
+    return localUrlForFile(filePath, root, localAppHost, query, fragment);
 }
 
 void Browser::updateGPSLocation() {

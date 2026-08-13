@@ -1,12 +1,14 @@
 #ifndef BROWSER_H
 #define BROWSER_H
 
+#include <filesystem>
 #include <XPLMDisplay.h>
 #include <XPLMDefs.h>
 
 #include "button.h"
 
 #include <include/cef_app.h>
+#include <include/cef_request_context.h>
 #include "browser_handler.h"
 #include "xplm_bridge.h"
 
@@ -21,10 +23,15 @@ private:
     Button *backButton;
     XplmBridge *xplmBridge;
     CefRefPtr<BrowserHandler> handler;
+    CefRefPtr<CefRequestContext> requestContext;
+    std::string localAppHost;
+    std::filesystem::path localAppRoot;
     void allocateTexture();
     bool createBrowser();
     void updateGPSLocation();
     CefMouseEvent getMouseEvent(float normalizedX, float normalizedY);
+    void registerLocalAppRoot();
+    std::string prepareUrlForLoad(const std::string& url);
     
 public:
     Browser();
