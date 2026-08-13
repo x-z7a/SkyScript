@@ -40,6 +40,10 @@
 #include <XPLMProcessing.h>
 #include <XPLMUtilities.h>
 
+#ifndef SKYSCRIPT_PLUGIN_LOCAL_CEF
+#define SKYSCRIPT_PLUGIN_LOCAL_CEF 0
+#endif
+
 #if APL
 #include "unix_keycodes.h"
 
@@ -233,6 +237,46 @@ private:
 
     IMPLEMENT_REFCOUNTING(LocalAppSchemeHandlerFactory);
 };
+
+bool ensureCefRuntimeAvailable() {
+#if APL
+    static bool loaded = false;
+    if (loaded) {
+        return true;
+    }
+
+#if SKYSCRIPT_PLUGIN_LOCAL_CEF
+    const std::string frameworkPath =
+        Path::getInstance()->pluginDirectory +
+        "/mac_x64/Chromium Embedded Framework.framework/Chromium Embedded Framework";
+
+    if (!std::filesystem::exists(frameworkPath)) {
+        debug("Could not find the CEF framework at %s.\n", frameworkPath.c_str());
+        return false;
+    }
+
+    if (!cef_load_library(frameworkPath.c_str())) {
+        debug("Could not load the CEF framework from %s.\n", frameworkPath.c_str());
+        return false;
+    }
+
+#else
+    static CefScopedLibraryLoader libraryLoader;
+    if (!libraryLoader.LoadInMain()) {
+        debug("Could not load the X-Plane CEF framework.\n");
+        return false;
+    }
+#endif
+
+    loaded = true;
+    return true;
+#else
+    // On Windows and Linux, libcef is resolved by the OS loader before CEF
+    // browser initialization. The host-vs-plugin-local choice is controlled
+    // by the package layout and dynamic loader search path.
+    return true;
+#endif
+}
 
 } // namespace
 
@@ -667,13 +711,9 @@ bool Browser::createBrowser() {
 
     App *app = App::current;
 
-#if APL
-    CefScopedLibraryLoader library_loader;
-    if (!library_loader.LoadInMain()) {
-        debug("Could not load the CEF framework.\n");
+    if (!ensureCefRuntimeAvailable()) {
         return false;
     }
-#endif
 
     std::string cachePath = Path::getInstance()->pluginDirectory + "/cache";
     if (!std::filesystem::exists(cachePath)) {

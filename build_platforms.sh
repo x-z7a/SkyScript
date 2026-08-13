@@ -8,6 +8,7 @@ MAC_PLUGIN_COPY_TARGET="/Volumes/storage/X-Plane 12/Resources/plugins/SkyScript/
 PROJECT_NAME=$(sed -n 's/^#define PRODUCT_NAME "\(.*\)"/\1/p' src/include/config.h | head -n 1)
 VERSION=$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/include/config.h | head -n 1)
 XPLANE_SDK_ROOT="${XPLANE_SDK_ROOT:-$DEFAULT_XPLANE_SDK_ROOT}"
+SKYSCRIPT_PLUGIN_LOCAL_CEF="${SKYSCRIPT_PLUGIN_LOCAL_CEF:-0}"
 JOBS=$(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 PLATFORMS=""
 XPLANE_VERSION=12
@@ -107,6 +108,33 @@ copy_artifact() {
     mkdir -p "$(dirname "$destination_path")"
     cp "$source_path" "$destination_path"
     printf 'Copied %s -> %s\n' "$source_path" "$destination_path"
+}
+
+copy_runtime_files() {
+    platform=$1
+    destination_dir=$2
+    platform_dir="lib/${platform}_x64"
+
+    if [ "$SKYSCRIPT_PLUGIN_LOCAL_CEF" != "1" ]; then
+        printf 'Skipping %s CEF bundle; SkyScript will use the X-Plane runtime.\n' "$platform"
+        return 0
+    fi
+
+    if [ -d "${platform_dir}/cef" ]; then
+        mkdir -p "$destination_dir"
+        cp -r "${platform_dir}/cef" "$destination_dir/cef"
+        printf 'Bundled CEF tree: %s -> %s\n' "${platform_dir}/cef" "$destination_dir"
+    else
+        printf 'Warning: CEF tree not found for %s at %s\n' "$platform" "${platform_dir}/cef"
+    fi
+
+    if [ -d "${platform_dir}/dist_${XPLANE_VERSION}" ]; then
+        mkdir -p "$destination_dir"
+        cp -r "${platform_dir}/dist_${XPLANE_VERSION}"/* "$destination_dir/"
+        printf 'Bundled CEF runtime files: %s -> %s\n' "${platform_dir}/dist_${XPLANE_VERSION}" "$destination_dir"
+    else
+        printf 'Warning: CEF runtime files not found for %s at %s\n' "$platform" "${platform_dir}/dist_${XPLANE_VERSION}"
+    fi
 }
 
 run_additional_copies() {
@@ -210,6 +238,7 @@ printf 'Building %s.xpl version %s\n' "$PROJECT_NAME" "$VERSION"
 printf 'Platforms: %s\n' "$PLATFORMS"
 printf 'X-Plane version: %s\n' "$XPLANE_VERSION"
 printf 'SDK root: %s\n' "$XPLANE_SDK_ROOT"
+printf 'Plugin-local CEF: %s\n' "$SKYSCRIPT_PLUGIN_LOCAL_CEF"
 printf 'Parallel jobs: %s\n' "$JOBS"
 printf 'Clean build: %s\n' "$CLEAN_BUILD"
 printf 'Package extra files: %s\n\n' "$EXTRA_FILES"
@@ -236,10 +265,10 @@ for platform in $PLATFORMS; do
     if [ "$platform" = "lin" ]; then
         docker build -t gcc-cmake -f ./docker/Dockerfile.linux . &&
         docker run --user "$(id -u):$(id -g)" --rm -e XPLANE_SDK_ROOT="$XPLANE_SDK_ROOT" -v "$(pwd):/src" -w /src gcc-cmake:latest bash -c "\
-        cmake -DCMAKE_CXX_FLAGS='-march=x86-64' -DCMAKE_TOOLCHAIN_FILE=toolchain-$platform.cmake -DXPLANE_VERSION=$XPLANE_VERSION -DXPLANE_SDK_ROOT=\"\$XPLANE_SDK_ROOT\" -Bbuild/$platform -H. && \
+        cmake -DCMAKE_CXX_FLAGS='-march=x86-64' -DCMAKE_TOOLCHAIN_FILE=toolchain-$platform.cmake -DXPLANE_VERSION=$XPLANE_VERSION -DXPLANE_SDK_ROOT=\"\$XPLANE_SDK_ROOT\" -DSKYSCRIPT_PLUGIN_LOCAL_CEF=$SKYSCRIPT_PLUGIN_LOCAL_CEF -Bbuild/$platform -H. && \
         cmake --build build/$platform --parallel \$(nproc)"
     else
-        cmake -DCMAKE_TOOLCHAIN_FILE=toolchain-"$platform".cmake -DCMAKE_OSX_ARCHITECTURES=arm64 -DXPLANE_VERSION="$XPLANE_VERSION" -DXPLANE_SDK_ROOT="$XPLANE_SDK_ROOT" -Bbuild/"$platform" -H.
+        cmake -DCMAKE_TOOLCHAIN_FILE=toolchain-"$platform".cmake -DCMAKE_OSX_ARCHITECTURES=arm64 -DXPLANE_VERSION="$XPLANE_VERSION" -DXPLANE_SDK_ROOT="$XPLANE_SDK_ROOT" -DSKYSCRIPT_PLUGIN_LOCAL_CEF="$SKYSCRIPT_PLUGIN_LOCAL_CEF" -Bbuild/"$platform" -H.
         cmake --build build/"$platform" --parallel "$JOBS"
     fi
 
@@ -270,67 +299,43 @@ if [ -d "build/dist" ]; then
     rm -rf build/dist
 fi
 
-# ---- Library distribution (static lib + headers) ----
+# ---- Library distribution (shared lib + C API header) ----
 LIB_DIST="build/dist/$PROJECT_NAME-lib"
 mkdir -p "$LIB_DIST/include"
 
-# Copy public headers (skyscript.h, C API header + transitive dependencies)
-cp src/skyscript.h "$LIB_DIST/include/"
+# Copy C API header (the only header downstream consumers need)
 cp src/skyscript_c.h "$LIB_DIST/include/"
-cp src/include/app.h "$LIB_DIST/include/"
-cp src/include/config.h "$LIB_DIST/include/"
-cp src/include/xplm_bridge.h "$LIB_DIST/include/"
-mkdir -p "$LIB_DIST/include/components"
-cp src/include/components/button.h "$LIB_DIST/include/components/"
-cp src/include/components/image.h "$LIB_DIST/include/components/"
-cp src/include/components/notification.h "$LIB_DIST/include/components/"
-mkdir -p "$LIB_DIST/include/utils"
-cp src/include/utils/dataref.h "$LIB_DIST/include/utils/"
-cp src/include/utils/path.h "$LIB_DIST/include/utils/"
-mkdir -p "$LIB_DIST/include/utils/cursor"
-if [ -d "src/include/utils/cursor" ]; then
-    cp src/include/utils/cursor/*.h "$LIB_DIST/include/utils/cursor/" 2>/dev/null || true
-fi
+cp LICENSE "$LIB_DIST/"
 
-# Copy static library for each built platform
+# Copy shared library and runtime support for each built platform
 for platform in $PLATFORMS; do
     if [ "$platform" = "win" ]; then
-        lib_file="build/$platform/SkyScriptLib.lib"
+        lib_file="build/$platform/SkyScriptLib.dll"
+        import_lib="build/$platform/SkyScriptLib.lib"
         if [ ! -f "$lib_file" ]; then
-            lib_file="build/$platform/libSkyScriptLib.a"
+            lib_file="build/$platform/libSkyScriptLib.dll"
+            import_lib="build/$platform/libSkyScriptLib.dll.a"
         fi
+    elif [ "$platform" = "mac" ]; then
+        lib_file="build/$platform/libSkyScriptLib.dylib"
     else
-        lib_file="build/$platform/libSkyScriptLib.a"
+        lib_file="build/$platform/libSkyScriptLib.so"
     fi
 
     if [ -f "$lib_file" ]; then
         mkdir -p "$LIB_DIST/lib/${platform}_x64"
         cp "$lib_file" "$LIB_DIST/lib/${platform}_x64/"
         printf 'Bundled library: %s -> %s\n' "$lib_file" "${platform}_x64"
-    else
-        printf 'Warning: static library not found for %s at %s\n' "$platform" "$lib_file"
-    fi
-done
 
-# Copy CEF wrapper library for each built platform
-for platform in $PLATFORMS; do
-    if [ "$platform" = "mac" ]; then
-        cef_wrapper="lib/mac_x64/cef/libcef_dll_wrapper.a"
-    elif [ "$platform" = "win" ]; then
-        cef_wrapper="lib/win_x64/cef/libcef_dll_wrapper/libcef_dll_wrapper.lib"
-        if [ ! -f "$cef_wrapper" ]; then
-            cef_wrapper="lib/win_x64/cef/libcef_dll_wrapper/libcef_dll_wrapper.a"
+        # Copy import library on Windows (for MSVC consumers)
+        if [ "$platform" = "win" ] && [ -f "$import_lib" ]; then
+            cp "$import_lib" "$LIB_DIST/lib/${platform}_x64/"
+            printf 'Bundled import library: %s -> %s\n' "$import_lib" "${platform}_x64"
         fi
-    else
-        cef_wrapper="lib/lin_x64/cef/libcef_dll_wrapper/libcef_dll_wrapper.a"
-    fi
 
-    if [ -f "$cef_wrapper" ]; then
-        mkdir -p "$LIB_DIST/lib/${platform}_x64"
-        cp "$cef_wrapper" "$LIB_DIST/lib/${platform}_x64/"
-        printf 'Bundled CEF wrapper: %s -> %s\n' "$cef_wrapper" "${platform}_x64"
+        copy_runtime_files "$platform" "$LIB_DIST/lib/${platform}_x64"
     else
-        printf 'Warning: CEF wrapper not found for %s at %s\n' "$platform" "$cef_wrapper"
+        printf 'Warning: shared library not found for %s at %s\n' "$platform" "$lib_file"
     fi
 done
 
@@ -349,7 +354,7 @@ mkdir -p "$EXAMPLE_DIST/example"
 cp example/main.cpp "$EXAMPLE_DIST/example/"
 cp -r apps "$EXAMPLE_DIST/example/"
 
-# Include library headers and static libs so developers can build from source
+# Include library header and shared libs so developers can build from source
 cp -r "$LIB_DIST/include" "$EXAMPLE_DIST/"
 if [ -d "$LIB_DIST/lib" ]; then
     cp -r "$LIB_DIST/lib" "$EXAMPLE_DIST/"

@@ -1,6 +1,6 @@
 # Getting Started
 
-SkyScript is a C++ static library that adds CEF browser windows to X-Plane 12 plugins. This guide covers two topics:
+SkyScript is a shared library that adds CEF browser windows to X-Plane 12 plugins. It exposes a stable C API so downstream plugins can link against it without C++ ABI coupling. This guide covers two topics:
 
 1. **Integrating the library** into your X-Plane plugin
 2. **Building a web app** that runs inside a SkyScript browser window
@@ -9,39 +9,73 @@ SkyScript is a C++ static library that adds CEF browser windows to X-Plane 12 pl
 
 ### Prerequisites
 
-- CMake 3.25.1+, C++23 compiler
+- CMake 3.25.1+, C or C++ compiler (any toolchain: MSVC, MinGW, GCC, Clang)
 - X-Plane SDK 4.2.0
-- Pre-built CEF binaries (included in `lib/<platform>/cef/`)
+- SkyScript shared library (`.dll`/`.dylib`/`.so`) from the library distribution
+
+### Library Distribution Contents
+
+The SkyScript library distribution zip contains:
+
+```
+SkyScript-lib/
+├── include/
+│   └── skyscript_c.h       # C API header (the only header you need)
+├── lib/
+│   ├── win_x64/
+│   │   ├── SkyScriptLib.dll     # Windows shared library
+│   │   ├── SkyScriptLib.lib     # Windows import library (for MSVC)
+│   ├── mac_x64/
+│   │   └── libSkyScriptLib.dylib
+│   └── lin_x64/
+│       └── libSkyScriptLib.so
+├── go/                      # Go bindings
+├── go.mod
+├── assets/                  # Icons, sounds, etc.
+└── LICENSE
+```
 
 ### CMake Setup
 
-SkyScript builds as a static library (`SkyScriptLib`). Link it from your plugin's `CMakeLists.txt`:
+Link your plugin against the SkyScript shared library:
+
+```cmake
+# Find the SkyScript shared library
+find_library(SKYSCRIPT_LIBRARY NAMES SkyScriptLib PATHS "path/to/skyscript/lib/${PLATFORM}_x64" REQUIRED)
+
+# Add your plugin
+add_library(MyPlugin MODULE src/main.cpp)
+target_link_libraries(MyPlugin PRIVATE ${SKYSCRIPT_LIBRARY})
+target_include_directories(MyPlugin PRIVATE "path/to/skyscript/include")
+```
+
+If you are building from the SkyScript source tree via `add_subdirectory`:
 
 ```cmake
 add_subdirectory(path/to/skyscript)
-target_link_libraries(MyPlugin PUBLIC SkyScriptLib)
+target_link_libraries(MyPlugin PRIVATE SkyScriptLib)
 ```
 
 ### Minimal Plugin
 
-```cpp
-#include "skyscript.h"
+```c
+#include "skyscript_c.h"
 
 PLUGIN_API int XPluginStart(char* name, char* sig, char* desc) {
     strcpy(name, "My Plugin");
     strcpy(sig, "com.example.myplugin");
     strcpy(desc, "Plugin with embedded browser");
 
-    SkyScript::initialize();   // Registers flight loop, VR monitoring, cursor
+    skyscript_initialize();   // Registers flight loop, VR monitoring, cursor
     return 1;
 }
 
 PLUGIN_API void XPluginStop() {
-    SkyScript::shutdown();     // Unregisters flight loop, destroys all windows
+    skyscript_shutdown();     // Unregisters flight loop, destroys all windows
 }
 
 PLUGIN_API int XPluginEnable() {
-    SkyScript::loadAppsFromDirectory();  // Scan apps/ folder
+    skyscript_load_apps_from_directory();  // Scan apps/ folder
     return 1;
 }
 
@@ -55,10 +89,10 @@ The SkyScript library distribution includes an `assets/` folder containing icons
 If you are building a **third-party plugin** that uses SkyScript as a library, you need to:
 
 1. **Copy the `assets/` directory** from the library distribution into your plugin folder.
-2. **Call `SkyScript::setAssetsPath()`** after `initialize()` to tell SkyScript where to find the assets.
+2. **Call `skyscript_set_assets_path()`** after `skyscript_initialize()` to tell SkyScript where to find the assets.
 
-```cpp
-#include "skyscript.h"
+```c
+#include "skyscript_c.h"
 #include <XPLMPlugin.h>
 
 PLUGIN_API int XPluginStart(char* name, char* sig, char* desc) {
@@ -66,13 +100,16 @@ PLUGIN_API int XPluginStart(char* name, char* sig, char* desc) {
     strcpy(sig, "com.example.myplugin");
     strcpy(desc, "Plugin with embedded browser");
 
-    SkyScript::initialize();
+    skyscript_initialize();
 
     // Point SkyScript to the assets bundled with your plugin
     char pluginPath[512];
-    XPLMGetPluginInfo(XPLMGetMyID(), nullptr, pluginPath, nullptr, nullptr);
-    std::string myPluginDir = std::string(pluginPath).substr(0, std::string(pluginPath).rfind('/'));
-    SkyScript::setAssetsPath(myPluginDir + "/assets");
+    XPLMGetPluginInfo(XPLMGetMyID(), NULL, pluginPath, NULL, NULL);
+    // Trim filename to get directory, then append /assets
+    char* lastSlash = strrchr(pluginPath, '/');
+    if (lastSlash) *lastSlash = '\0';
+    strcat(pluginPath, "/assets");
+    skyscript_set_assets_path(pluginPath);
 
     return 1;
 }
@@ -80,14 +117,28 @@ PLUGIN_API int XPluginStart(char* name, char* sig, char* desc) {
 
 Without this step, SkyScript will look for assets in its own plugin directory (`Resources/plugins/SkyScript/assets/`), which won't exist if SkyScript is only used as a library.
 
-For **Go bindings**, the equivalent call is:
+### Deploying the Shared Library
+
+At runtime, the SkyScript shared library must be loadable by the operating system:
+
+- **Windows**: Place `SkyScriptLib.dll` next to your `.xpl` plugin, or in the same `win_x64/` directory.
+- **macOS**: Place `libSkyScriptLib.dylib` next to your `.xpl` plugin, or in the same `mac_x64/` directory.
+- **Linux**: Place `libSkyScriptLib.so` next to your `.xpl` plugin, or in the same `lin_x64/` directory.
+
+The default library uses the CEF runtime that ships with X-Plane, so no CEF
+runtime files need to be copied beside your plugin. If you build SkyScript with
+`SKYSCRIPT_PLUGIN_LOCAL_CEF=1` or `-DSKYSCRIPT_PLUGIN_LOCAL_CEF=ON`, copy the
+platform CEF runtime files from the same distribution directory beside the
+plugin.
+
+For **Go bindings**, the equivalent calls are:
 
 ```go
 skyscript.Initialize()
 skyscript.SetAssetsPath(myPluginDir + "/assets")
 ```
 
-See the [C++ Library API](/developer/cpp-api) for the full reference and the `example/` folder in the repo for a complete working plugin.
+See the [C API Reference](/developer/cpp-api) for the full reference and the `example/` folder in the repo for a complete working plugin.
 
 ---
 
