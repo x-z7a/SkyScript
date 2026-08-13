@@ -8,6 +8,7 @@ MAC_PLUGIN_COPY_TARGET="/Volumes/storage/X-Plane 12/Resources/plugins/SkyScript/
 PROJECT_NAME=$(sed -n 's/^#define PRODUCT_NAME "\(.*\)"/\1/p' src/include/config.h | head -n 1)
 VERSION=$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/include/config.h | head -n 1)
 XPLANE_SDK_ROOT="${XPLANE_SDK_ROOT:-$DEFAULT_XPLANE_SDK_ROOT}"
+SKYSCRIPT_PLUGIN_LOCAL_CEF="${SKYSCRIPT_PLUGIN_LOCAL_CEF:-0}"
 JOBS=$(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 PLATFORMS=""
 XPLANE_VERSION=12
@@ -113,6 +114,11 @@ copy_runtime_files() {
     platform=$1
     destination_dir=$2
     platform_dir="lib/${platform}_x64"
+
+    if [ "$SKYSCRIPT_PLUGIN_LOCAL_CEF" != "1" ]; then
+        printf 'Skipping %s CEF bundle; SkyScript will use the X-Plane runtime.\n' "$platform"
+        return 0
+    fi
 
     if [ -d "${platform_dir}/cef" ]; then
         mkdir -p "$destination_dir"
@@ -232,6 +238,7 @@ printf 'Building %s.xpl version %s\n' "$PROJECT_NAME" "$VERSION"
 printf 'Platforms: %s\n' "$PLATFORMS"
 printf 'X-Plane version: %s\n' "$XPLANE_VERSION"
 printf 'SDK root: %s\n' "$XPLANE_SDK_ROOT"
+printf 'Plugin-local CEF: %s\n' "$SKYSCRIPT_PLUGIN_LOCAL_CEF"
 printf 'Parallel jobs: %s\n' "$JOBS"
 printf 'Clean build: %s\n' "$CLEAN_BUILD"
 printf 'Package extra files: %s\n\n' "$EXTRA_FILES"
@@ -258,10 +265,10 @@ for platform in $PLATFORMS; do
     if [ "$platform" = "lin" ]; then
         docker build -t gcc-cmake -f ./docker/Dockerfile.linux . &&
         docker run --user "$(id -u):$(id -g)" --rm -e XPLANE_SDK_ROOT="$XPLANE_SDK_ROOT" -v "$(pwd):/src" -w /src gcc-cmake:latest bash -c "\
-        cmake -DCMAKE_CXX_FLAGS='-march=x86-64' -DCMAKE_TOOLCHAIN_FILE=toolchain-$platform.cmake -DXPLANE_VERSION=$XPLANE_VERSION -DXPLANE_SDK_ROOT=\"\$XPLANE_SDK_ROOT\" -Bbuild/$platform -H. && \
+        cmake -DCMAKE_CXX_FLAGS='-march=x86-64' -DCMAKE_TOOLCHAIN_FILE=toolchain-$platform.cmake -DXPLANE_VERSION=$XPLANE_VERSION -DXPLANE_SDK_ROOT=\"\$XPLANE_SDK_ROOT\" -DSKYSCRIPT_PLUGIN_LOCAL_CEF=$SKYSCRIPT_PLUGIN_LOCAL_CEF -Bbuild/$platform -H. && \
         cmake --build build/$platform --parallel \$(nproc)"
     else
-        cmake -DCMAKE_TOOLCHAIN_FILE=toolchain-"$platform".cmake -DCMAKE_OSX_ARCHITECTURES=arm64 -DXPLANE_VERSION="$XPLANE_VERSION" -DXPLANE_SDK_ROOT="$XPLANE_SDK_ROOT" -Bbuild/"$platform" -H.
+        cmake -DCMAKE_TOOLCHAIN_FILE=toolchain-"$platform".cmake -DCMAKE_OSX_ARCHITECTURES=arm64 -DXPLANE_VERSION="$XPLANE_VERSION" -DXPLANE_SDK_ROOT="$XPLANE_SDK_ROOT" -DSKYSCRIPT_PLUGIN_LOCAL_CEF="$SKYSCRIPT_PLUGIN_LOCAL_CEF" -Bbuild/"$platform" -H.
         cmake --build build/"$platform" --parallel "$JOBS"
     fi
 

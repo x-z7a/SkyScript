@@ -80,6 +80,7 @@ jobs:
           cmake \
             -DCMAKE_TOOLCHAIN_FILE=toolchain-mac.cmake \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DSKYSCRIPT_PLUGIN_LOCAL_CEF=OFF \
             -DXPLANE_VERSION=12 \
             -DXPLANE_SDK_ROOT="${{ github.workspace }}/SDK" \
             -Bbuild/mac -H.
@@ -125,9 +126,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lib_mac_x64
-          path: |
-            build/mac/libSkyScriptLib.dylib
-            lib/mac_x64/cef/**
+          path: build/mac/libSkyScriptLib.dylib
 
   # ---------------------------------------------------------------------------
   # Linux – x86_64, built in container matching the Docker setup
@@ -204,6 +203,7 @@ jobs:
           cmake \
             -DCMAKE_CXX_FLAGS='-march=x86-64' \
             -DCMAKE_TOOLCHAIN_FILE=toolchain-lin.cmake \
+            -DSKYSCRIPT_PLUGIN_LOCAL_CEF=OFF \
             -DXPLANE_VERSION=12 \
             -DXPLANE_SDK_ROOT="$(pwd)/SDK" \
             -Bbuild/lin -H.
@@ -220,9 +220,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lib_lin_x64
-          path: |
-            build/lin/libSkyScriptLib.so
-            lib/lin_x64/cef/**
+          path: build/lin/libSkyScriptLib.so
 
   # ---------------------------------------------------------------------------
   # Windows – x86_64, native MSVC
@@ -314,7 +312,7 @@ jobs:
 
       - name: Build SkyScript (Windows x64)
         run: |
-          cmake -S . -B build/win -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DXPLANE_VERSION=12 -DXPLANE_SDK_ROOT="$env:GITHUB_WORKSPACE\SDK"
+          cmake -S . -B build/win -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DSKYSCRIPT_PLUGIN_LOCAL_CEF=OFF -DXPLANE_VERSION=12 -DXPLANE_SDK_ROOT="$env:GITHUB_WORKSPACE\SDK"
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
@@ -360,7 +358,6 @@ jobs:
           path: |
             build/windows-artifact/SkyScriptLib.dll
             build/windows-artifact/SkyScriptLib.lib
-            lib/win_x64/cef/**
 
   # ---------------------------------------------------------------------------
   # Package + Release (runs after all builds complete)
@@ -418,12 +415,18 @@ jobs:
 
           mkdir -p "$LIB_DIST/lib/mac_x64" "$LIB_DIST/lib/lin_x64" "$LIB_DIST/lib/win_x64"
           cp artifacts/lib_mac_x64/libSkyScriptLib.dylib "$LIB_DIST/lib/mac_x64/"
-          cp -R artifacts/lib_mac_x64/lib/mac_x64/cef "$LIB_DIST/lib/mac_x64/"
+          if [ -d artifacts/lib_mac_x64/lib/mac_x64/cef ]; then
+            cp -R artifacts/lib_mac_x64/lib/mac_x64/cef "$LIB_DIST/lib/mac_x64/"
+          fi
           cp artifacts/lib_lin_x64/libSkyScriptLib.so "$LIB_DIST/lib/lin_x64/"
-          cp -R artifacts/lib_lin_x64/lib/lin_x64/cef "$LIB_DIST/lib/lin_x64/"
+          if [ -d artifacts/lib_lin_x64/lib/lin_x64/cef ]; then
+            cp -R artifacts/lib_lin_x64/lib/lin_x64/cef "$LIB_DIST/lib/lin_x64/"
+          fi
           cp artifacts/lib_win_x64/SkyScriptLib.dll "$LIB_DIST/lib/win_x64/"
           cp artifacts/lib_win_x64/SkyScriptLib.lib "$LIB_DIST/lib/win_x64/"
-          cp -R artifacts/lib_win_x64/lib/win_x64/cef "$LIB_DIST/lib/win_x64/"
+          if [ -d artifacts/lib_win_x64/lib/win_x64/cef ]; then
+            cp -R artifacts/lib_win_x64/lib/win_x64/cef "$LIB_DIST/lib/win_x64/"
+          fi
 
           # Copy Go bindings
           cp go.mod "$LIB_DIST/"

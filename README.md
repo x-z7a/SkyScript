@@ -13,14 +13,19 @@ src/              → SkyScriptLib (shared library)
 src/skyscript_c.h → Public C API header
 example/          → Example X-Plane plugin using the C API
 apps/             → React/HTML apps loaded at runtime
-lib/<platform>/   → Pre-built CEF binaries
+lib/<platform>/   → Build-time CEF inputs and platform runtime files
 ```
 
 ## Requirements
 
 - X-Plane SDK 4.2.0
-- CEF tree under `lib/<platform>/cef`
+- CEF tree under `lib/<platform>/cef` for building
 - CMake 3.25.1+, C++23
+
+SkyScript uses the CEF runtime already shipped with X-Plane by default. Set
+`SKYSCRIPT_PLUGIN_LOCAL_CEF=1` when running `build_platforms.sh`, or
+`-DSKYSCRIPT_PLUGIN_LOCAL_CEF=ON` when configuring CMake, to build and package
+a plugin that loads CEF from the plugin directory instead.
 
 ## License
 
