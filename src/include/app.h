@@ -6,9 +6,9 @@
 #include <functional>
 #include <XPLMDisplay.h>
 #include "cursor.h"
+#include "notification.h"
 
 class Browser;
-class Notification;
 
 #include "button.h"
 
@@ -38,6 +38,13 @@ struct AppConfiguration {
     unsigned short width;
     unsigned short height;
     bool console_logging;
+    NotificationCorner notification_corner;
+    float notification_timeout;
+    float notification_opacity;
+    float notification_slide_seconds;
+    bool notification_sound;
+    bool window_titleless;
+    float window_opacity;
 #if DEBUG
     float debug_value_1;
     float debug_value_2;
@@ -57,7 +64,16 @@ private:
     std::vector<DelayedTask> tasks;
     std::vector<Button *> buttons;
     Notification *notification;
+    bool windowDragActive;
+    int windowDragStartX;
+    int windowDragStartY;
+    int windowDragLeft;
+    int windowDragTop;
+    int windowDragRight;
+    int windowDragBottom;
     bool setViewport(int x, int y, unsigned short width, unsigned short height);
+    void drawWindowBackground();
+    bool isWindowDragRegion(float normalizedX, float normalizedY) const;
 
 public:
     static App* current;
@@ -97,10 +113,18 @@ public:
     bool updateButtons(float normalizedX, float normalizedY, ButtonState state);
     void registerButton(Button *button);
     void unregisterButton(Button *button);
+    bool beginWindowDrag(float normalizedX, float normalizedY, int x, int y);
+    bool dragWindow(int x, int y);
+    void endWindowDrag();
+    bool isDraggingWindow() const;
 
     void showBrowser(std::string url = "");
     void hideBrowser();
     void showNotification(Notification *notification);
+    void showNotification(const NotificationOptions& options);
+    void dismissNotification();
+    void clearNotification();
+    NotificationOptions defaultNotificationOptions() const;
     void executeDelayed(CallbackFunc func, float delaySeconds);
 
     // Register a handler for messages from JS on a given channel.

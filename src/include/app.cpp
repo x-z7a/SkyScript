@@ -14,6 +14,7 @@
 #include "button.h"
 #include "config.h"
 #include "dataref.h"
+#include "drawing.h"
 #include "notification.h"
 #include "path.h"
 
@@ -38,6 +39,13 @@ App::App(const std::string& aName, const std::string& anId, AppType aType, const
     config = aConfig;
     notification = nullptr;
     window = nullptr;
+    windowDragActive = false;
+    windowDragStartX = 0;
+    windowDragStartY = 0;
+    windowDragLeft = 0;
+    windowDragTop = 0;
+    windowDragRight = 0;
+    windowDragBottom = 0;
     visible = false;
     mouseDown = false;
     browser = nullptr;
@@ -104,10 +112,7 @@ void App::deinitialize() {
     Dataref::getInstance()->unbind((datarefPrefix + "/url").c_str());
     Dataref::getInstance()->unbind((datarefPrefix + "/refresh").c_str());
 
-    if (notification) {
-        notification->destroy();
-        notification = nullptr;
-    }
+    clearNotification();
 
     if (browser) {
         browser->visibilityWillChange(false);
@@ -122,6 +127,7 @@ void App::deinitialize() {
 
     tasks.clear();
     buttons.clear();
+    windowDragActive = false;
     visible = false;
     activeCursor = CursorDefault;
     brightness = 1.0f;
@@ -147,6 +153,9 @@ void App::update() {
 
     if (notification) {
         notification->update();
+        if (notification->isFinished()) {
+            clearNotification();
+        }
     }
 
     tasks.erase(
@@ -173,6 +182,7 @@ void App::draw() {
 
     syncWindowGeometry();
 
+    drawWindowBackground();
     browser->draw();
     if (notification) {
         notification->draw();
@@ -245,6 +255,88 @@ void App::unregisterButton(Button *button) {
     }
 }
 
+void App::drawWindowBackground() {
+    if (!config.window_titleless) {
+        return;
+    }
+
+    XPLMSetGraphicsState(
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0);
+
+    glColor4f(0.02f, 0.025f, 0.03f, std::clamp(config.window_opacity, 0.2f, 1.0f) * 0.18f);
+    Drawing::DrawRoundedRect(0.0f, 0.0f, 1.0f, 1.0f, 8.0f);
+
+    float gripHeight = (config.hide_addressbar ? 24.0f : 10.0f) / viewport.height;
+    glColor4f(0.95f, 0.97f, 1.0f, 0.08f);
+    Drawing::DrawRect(0.0f, 1.0f - gripHeight, 1.0f, 1.0f);
+}
+
+bool App::isWindowDragRegion(float normalizedX, float normalizedY) const {
+    if (!config.window_titleless || !window || viewport.height == 0) {
+        return false;
+    }
+
+    bool isVrEnabled = Dataref::getInstance()->getCached<int>("sim/graphics/VR/enabled") != 0;
+    if (isVrEnabled) {
+        return false;
+    }
+
+    float dragHeight = (config.hide_addressbar ? 24.0f : 10.0f) / viewport.height;
+    return normalizedX >= 0.0f && normalizedX <= 1.0f && normalizedY >= 1.0f - dragHeight && normalizedY <= 1.0f;
+}
+
+bool App::beginWindowDrag(float normalizedX, float normalizedY, int x, int y) {
+    if (!isWindowDragRegion(normalizedX, normalizedY)) {
+        return false;
+    }
+
+    XPLMGetWindowGeometry(window, &windowDragLeft, &windowDragTop, &windowDragRight, &windowDragBottom);
+    windowDragStartX = x;
+    windowDragStartY = y;
+    windowDragActive = true;
+    mouseDown = true;
+
+    if (browser) {
+        browser->setFocus(false);
+    }
+    XPLMTakeKeyboardFocus(0);
+
+    return true;
+}
+
+bool App::dragWindow(int x, int y) {
+    if (!windowDragActive || !window) {
+        return false;
+    }
+
+    int deltaX = x - windowDragStartX;
+    int deltaY = y - windowDragStartY;
+    XPLMSetWindowGeometry(
+        window,
+        windowDragLeft + deltaX,
+        windowDragTop + deltaY,
+        windowDragRight + deltaX,
+        windowDragBottom + deltaY);
+    syncWindowGeometry(false);
+
+    return true;
+}
+
+void App::endWindowDrag() {
+    windowDragActive = false;
+    mouseDown = false;
+}
+
+bool App::isDraggingWindow() const {
+    return windowDragActive;
+}
+
 void App::showBrowser(std::string url) {
     if (!browser || !window) {
         return;
@@ -281,11 +373,52 @@ void App::hideBrowser() {
 }
 
 void App::showNotification(Notification *aNotification) {
+    if (!aNotification) {
+        clearNotification();
+        return;
+    }
+
     if (notification && notification != aNotification) {
-        notification->destroy();
+        clearNotification();
     }
 
     notification = aNotification;
+}
+
+void App::showNotification(const NotificationOptions& options) {
+    App* previous = App::current;
+    App::current = this;
+    showNotification(new Notification(options));
+    App::current = previous;
+}
+
+void App::dismissNotification() {
+    if (notification) {
+        notification->dismiss();
+    }
+}
+
+void App::clearNotification() {
+    if (!notification) {
+        return;
+    }
+
+    App* previous = App::current;
+    App::current = this;
+    Notification *oldNotification = notification;
+    notification = nullptr;
+    delete oldNotification;
+    App::current = previous;
+}
+
+NotificationOptions App::defaultNotificationOptions() const {
+    NotificationOptions options = Notification::defaultOptions();
+    options.corner = config.notification_corner;
+    options.timeoutSeconds = config.notification_timeout;
+    options.opacity = config.notification_opacity;
+    options.slideSeconds = config.notification_slide_seconds;
+    options.playSound = config.notification_sound;
+    return options;
 }
 
 void App::executeDelayed(CallbackFunc func, float delaySeconds) {
@@ -374,6 +507,17 @@ void App::registerWindow() {
             return 0;
         }
 
+        if (app->isDraggingWindow()) {
+            if (status == xplm_MouseDrag) {
+                app->dragWindow(x, y);
+            }
+            else if (status == xplm_MouseUp) {
+                app->endWindowDrag();
+            }
+            App::current = nullptr;
+            return 1;
+        }
+
         float mouseX, mouseY;
         if (!app->normalizeWindowPoint(x, y, &mouseX, &mouseY)) {
             if (app->browser->hasInputFocus()) {
@@ -384,6 +528,11 @@ void App::registerWindow() {
         }
 
         if (status == xplm_MouseDown && app->updateButtons(mouseX, mouseY, kButtonClick)) {
+            App::current = nullptr;
+            return 1;
+        }
+
+        if (status == xplm_MouseDown && app->beginWindowDrag(mouseX, mouseY, x, y)) {
             App::current = nullptr;
             return 1;
         }
@@ -493,10 +642,12 @@ void App::registerWindow() {
         return xplm_CursorCustom;
     };
     params.layer = xplm_WindowLayerFloatingWindows;
-    params.decorateAsFloatingWindow = xplm_WindowDecorationRoundRectangle;
+    params.decorateAsFloatingWindow = config.window_titleless ? xplm_WindowDecorationSelfDecoratedResizable : xplm_WindowDecorationRoundRectangle;
 
     window = XPLMCreateWindowEx(&params);
-    XPLMSetWindowTitle(window, name.c_str());
+    if (!config.window_titleless) {
+        XPLMSetWindowTitle(window, name.c_str());
+    }
     XPLMSetWindowResizingLimits(window, 640, 480, 4096, 4096);
     syncWindowGeometry(false);
     applyWindowMode();
@@ -516,6 +667,14 @@ AppConfiguration App::defaultConfig() {
     config.width = 0;
     config.height = 0;
     config.console_logging = true;
+    NotificationOptions notificationDefaults = Notification::defaultOptions();
+    config.notification_corner = notificationDefaults.corner;
+    config.notification_timeout = notificationDefaults.timeoutSeconds;
+    config.notification_opacity = notificationDefaults.opacity;
+    config.notification_slide_seconds = notificationDefaults.slideSeconds;
+    config.notification_sound = notificationDefaults.playSound;
+    config.window_titleless = true;
+    config.window_opacity = 0.96f;
 #if DEBUG
     config.debug_value_1 = 0.0f;
     config.debug_value_2 = 0.0f;
@@ -621,6 +780,35 @@ AppConfiguration App::parseManifest(const std::string& manifestPath, const AppCo
         }
         else if (key == "console_logging") {
             config.console_logging = (value != "false" && value != "0");
+        }
+        else if (key == "notification_corner" || key == "notification_location") {
+            config.notification_corner = NotificationCornerFromString(value, config.notification_corner);
+        }
+        else if (key == "notification_timeout" || key == "notification_timeout_seconds") {
+            if (!value.empty()) {
+                config.notification_timeout = std::stof(value);
+            }
+        }
+        else if (key == "notification_opacity") {
+            if (!value.empty()) {
+                config.notification_opacity = std::stof(value);
+            }
+        }
+        else if (key == "notification_slide_seconds") {
+            if (!value.empty()) {
+                config.notification_slide_seconds = std::stof(value);
+            }
+        }
+        else if (key == "notification_sound") {
+            config.notification_sound = (value != "false" && value != "0");
+        }
+        else if (key == "window_titleless") {
+            config.window_titleless = (value != "false" && value != "0");
+        }
+        else if (key == "window_opacity") {
+            if (!value.empty()) {
+                config.window_opacity = std::stof(value);
+            }
         }
     }
 

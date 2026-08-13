@@ -48,6 +48,10 @@ void setActiveApp(App* app);
 // Find an app by its id, or nullptr if not found.
 App* findApp(const std::string& id);
 
+// Show or dismiss the native notification toast for an app window.
+void showNotification(App* app, const NotificationOptions& options);
+void dismissNotification(App* app);
+
 // Destroy all managed windows and their dataref bindings.
 void destroyAllAppWindows();
 

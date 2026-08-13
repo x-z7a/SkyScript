@@ -8,6 +8,7 @@ Every SkyScript app requires a `manifest.yaml` file in its root folder. This fil
 name: My App
 hide_addressbar: true
 framerate: 20
+notification_corner: bottom-right
 ```
 
 ## Fields
@@ -26,9 +27,18 @@ framerate: 20
 | `width` | integer | `1024` | Initial window width in pixels. |
 | `height` | integer | `768` | Initial window height in pixels. |
 | `console_logging` | boolean | `true` | Forward `console.log`/`warn`/`error` to X-Plane's `Log.txt`. Set to `false` for noisy apps. |
+| `window_titleless` | boolean | `true` | Use SkyScript's titleless self-decorated window instead of X-Plane's native title bar. |
+| `window_opacity` | float | `0.96` | Browser texture opacity when `window_titleless` is enabled. Use `1` for a fully solid window. |
+| `notification_corner` | string | `top-right` | Default notification location. Values: `top-left`, `top-right`, `bottom-left`, `bottom-right`. Alias: `notification_location`. |
+| `notification_timeout` | float | `5` | Default auto-dismiss timeout in seconds. Use `0` to keep notifications visible until dismissed. Alias: `notification_timeout_seconds`. |
+| `notification_opacity` | float | `0.78` | Default notification panel opacity. |
+| `notification_slide_seconds` | float | `0.25` | Default notification slide-in and slide-out duration. |
+| `notification_sound` | boolean | `true` | Play the bundled notification sound by default. |
 | `default` | boolean | `false` | Default apps appear after a separator in the menu. Used for built-in apps like "About SkyScript". |
 
 Local apps are served through an app-specific `https://*.skyscript.local/` origin at runtime. This keeps pure client apps compatible with modern browser features such as ES modules while still loading files from the app folder.
+
+Titleless windows keep X-Plane resizing support and provide a slim draggable strip along the top edge. Apps that hide SkyScript's injected address bar get a slightly taller drag strip.
 
 ## Minimal Manifests
 

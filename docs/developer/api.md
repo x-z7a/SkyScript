@@ -1,6 +1,6 @@
 # JavaScript API
 
-SkyScript injects the `window.skyscript` object into every page. The `xplm` namespace provides X-Plane SDK access, `postMessage`/`onMessage` enable bidirectional plugin communication, and the `fs` namespace offers scoped file system access. All async methods return Promises and communicate with the native plugin on the simulator's main thread.
+SkyScript injects the `window.skyscript` object into every page. The `xplm` namespace provides X-Plane SDK access, `postMessage`/`onMessage` enable bidirectional plugin communication, `notification` displays native SkyScript toasts, and the `fs` namespace offers scoped file system access. All async methods return Promises and communicate with the native plugin on the simulator's main thread.
 
 ## Availability
 
@@ -179,6 +179,64 @@ skyscript.onMessage('validationResult', (result) => {
 ```
 
 Multiple listeners can be registered on the same channel. They are called in registration order.
+
+---
+
+### Notifications (`skyscript.notification`)
+
+SkyScript can show a native toast inside the app window. Notifications slide in from a configurable corner, use a translucent panel, and can auto-dismiss after a timeout.
+
+#### `notification.show(options)`
+
+```ts
+skyscript.notification.show(options: {
+  title?: string;
+  body?: string;
+  message?: string;
+  corner?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  timeoutSeconds?: number;
+  opacity?: number;
+  slideSeconds?: number;
+  dismissible?: boolean;
+  playSound?: boolean;
+}): Promise<void>
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `title` | `""` | Heading text. |
+| `body` / `message` | `""` | Body text. `message` is an alias. |
+| `corner` | manifest/default | Corner to slide from. |
+| `timeoutSeconds` | `5` | Seconds before auto-dismiss. Use `0` to stay visible until dismissed. |
+| `opacity` | `0.78` | Toast background opacity, clamped between `0.15` and `0.95`. |
+| `slideSeconds` | `0.25` | Slide-in and slide-out duration. |
+| `dismissible` | `true` | Show a close affordance. |
+| `playSound` | `true` | Play the bundled notification sound. |
+
+```js
+await skyscript.notification.show({
+  title: 'Route imported',
+  body: 'KSFO to KSEA is ready.',
+  corner: 'bottom-right',
+  timeoutSeconds: 4
+});
+```
+
+There is also a convenience wrapper:
+
+```js
+await skyscript.notify('Route imported', 'KSFO to KSEA is ready.', {
+  corner: 'bottom-right'
+});
+```
+
+#### `notification.dismiss()`
+
+```ts
+skyscript.notification.dismiss(): Promise<void>
+```
+
+Dismiss the current notification with the configured slide-out animation.
 
 ---
 

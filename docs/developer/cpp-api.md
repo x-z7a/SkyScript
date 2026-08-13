@@ -186,6 +186,62 @@ void skyscript_app_hide(SkyScriptApp app);
 
 Show or hide the app window. Pass `NULL` for `url` to show the current page.
 
+## Notifications
+
+SkyScript exposes native toast notifications for app windows. A notification slides in from a configurable corner, renders as a translucent panel, and can auto-dismiss after a timeout.
+
+### `skyscript_default_notification_options()`
+
+```c
+SkyScriptNotificationOptions skyscript_default_notification_options(void);
+```
+
+Returns default notification options:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `title` | `""` | Optional heading text. |
+| `body` | `""` | Optional body text. |
+| `corner` | `SKYSCRIPT_NOTIFICATION_TOP_RIGHT` | Slide-in corner. |
+| `timeout_seconds` | `5` | Seconds before auto-dismiss. Use `0` to keep it visible until dismissed. |
+| `opacity` | `0.78` | Panel opacity, clamped between `0.15` and `0.95`. |
+| `slide_seconds` | `0.25` | Slide-in and slide-out duration. |
+| `dismissible` | `1` | Show a close affordance. |
+| `play_sound` | `1` | Play the bundled notification sound. |
+
+### `skyscript_app_show_notification()`
+
+```c
+void skyscript_app_show_notification(
+    SkyScriptApp app,
+    const SkyScriptNotificationOptions* options
+);
+```
+
+Show a notification in the given app window. Showing a new notification replaces the current one.
+
+```c
+SkyScriptNotificationOptions options = skyscript_default_notification_options();
+options.title = "Route imported";
+options.body = "KSFO to KSEA is ready.";
+options.corner = SKYSCRIPT_NOTIFICATION_BOTTOM_RIGHT;
+options.timeout_seconds = 4.0f;
+
+skyscript_app_show_notification(app, &options);
+```
+
+### `skyscript_app_dismiss_notification()`
+
+```c
+void skyscript_app_dismiss_notification(SkyScriptApp app);
+```
+
+Dismiss the current notification with the configured slide-out animation.
+
+### C++ and Go
+
+The C++ API exposes `SkyScript::showNotification(app, options)` and `SkyScript::dismissNotification(app)`. Go bindings expose `app.Notify(title, body)`, `app.ShowNotification(options)`, and `app.DismissNotification()`.
+
 ## Message Passing
 
 SkyScript provides a bidirectional message channel between the native plugin and JavaScript running in app windows. This enables plugins to expose custom functions and push structured data to the JS frontend.
