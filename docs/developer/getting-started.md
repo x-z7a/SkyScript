@@ -25,16 +25,10 @@ SkyScript-lib/
 │   ├── win_x64/
 │   │   ├── SkyScriptLib.dll     # Windows shared library
 │   │   ├── SkyScriptLib.lib     # Windows import library (for MSVC)
-│   │   ├── cef/                 # CEF headers/libraries used by SkyScript
-│   │   └── ...                  # CEF runtime files for win_x64
 │   ├── mac_x64/
-│   │   ├── libSkyScriptLib.dylib
-│   │   ├── cef/                 # CEF framework and headers
-│   │   └── ...                  # CEF runtime files for mac_x64
+│   │   └── libSkyScriptLib.dylib
 │   └── lin_x64/
-│       ├── libSkyScriptLib.so
-│       ├── cef/                 # CEF headers/libraries used by SkyScript
-│       └── ...                  # CEF runtime files for lin_x64
+│       └── libSkyScriptLib.so
 ├── go/                      # Go bindings
 ├── go.mod
 ├── assets/                  # Icons, sounds, etc.
@@ -131,8 +125,11 @@ At runtime, the SkyScript shared library must be loadable by the operating syste
 - **macOS**: Place `libSkyScriptLib.dylib` next to your `.xpl` plugin, or in the same `mac_x64/` directory.
 - **Linux**: Place `libSkyScriptLib.so` next to your `.xpl` plugin, or in the same `lin_x64/` directory.
 
-Also copy the platform CEF runtime files from the same distribution directory
-beside the plugin. The shared library contains SkyScript, not Chromium itself.
+The default library uses the CEF runtime that ships with X-Plane, so no CEF
+runtime files need to be copied beside your plugin. If you build SkyScript with
+`SKYSCRIPT_PLUGIN_LOCAL_CEF=1` or `-DSKYSCRIPT_PLUGIN_LOCAL_CEF=ON`, copy the
+platform CEF runtime files from the same distribution directory beside the
+plugin.
 
 For **Go bindings**, the equivalent calls are:
 
