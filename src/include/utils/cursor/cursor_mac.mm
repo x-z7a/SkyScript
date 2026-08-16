@@ -19,7 +19,17 @@ extern "C" void setCursor(CursorType cursor) {
                 [[NSCursor IBeamCursor] set];
             }
             break;
-            
+
+        case CursorResize:
+            // AppKit's diagonal resize cursors are private
+            // (_windowResizeNorthWestSouthEastCursor), and a plugin is the last
+            // place to depend on private AppKit. The hand still says "this is
+            // draggable", which is the part that matters.
+            @autoreleasepool {
+                [[NSCursor pointingHandCursor] set];
+            }
+            break;
+
         default:
             break;
     }

@@ -14,7 +14,11 @@ void setCursor(CursorType cursor) {
         case CursorText:
             SetCursor(LoadCursor(NULL, IDC_IBEAM));
             break;
-            
+
+        case CursorResize:
+            SetCursor(LoadCursor(NULL, IDC_SIZENWSE));
+            break;
+
         default:
             break;
     }

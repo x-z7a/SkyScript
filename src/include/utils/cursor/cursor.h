@@ -3,7 +3,11 @@
 enum CursorType: unsigned char {
     CursorDefault = 0,
     CursorHand,
-    CursorText
+    CursorText,
+    // Over the window's resize grip. Windows has exactly this cursor; AppKit
+    // publishes no diagonal resize cursor, so macOS falls back to the pointing
+    // hand rather than reach for a private one.
+    CursorResize
 };
 
 #if APL

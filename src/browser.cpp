@@ -284,7 +284,7 @@ bool ensureCefRuntimeAvailable() {
 Browser::Browser() {
     textureId = 0;
     offsetStart = 0.0f;
-    offsetEnd = App::browserTopRatio;
+    offsetEnd = 1.0f;
     lastGpsUpdateTime = 0.0f;
     backButton = nullptr;
     xplmBridge = new XplmBridge();
@@ -300,12 +300,15 @@ void Browser::initialize() {
 
     App *app = App::current;
 
-    offsetStart = 0.0f;
-    offsetEnd = App::browserTopRatio;
+    offsetStart = app->pageBottomRatio();
+    offsetEnd = app->pageTopRatio();
 
     std::string icon = app->config.hide_addressbar ? "/icons/arrow-left-circle.svg" : "/icons/x-circle.svg";
     backButton = new Button(Path::getInstance()->assetsDirectory + icon);
-    backButton->setPosition(backButton->relativeWidth / 2.0f + 0.01f, App::toolbarY);
+    // Placed by setPageExtent, which knows where the title bar is. A fixed
+    // ratio would drift off the bar as the window is resized, because the bar
+    // is a fixed number of boxels and the ratio is not.
+    positionBackButton();
     backButton->setClickHandler([app]() {
         if (!app->visible) {
             return false;
@@ -509,6 +512,37 @@ void Browser::resize() {
         handler->browserInstance->GetHost()->WasResized();
         handler->browserInstance->GetHost()->Invalidate(PET_VIEW);
     }
+}
+
+void Browser::setPageExtent(float start, float end) {
+    // A degenerate extent would divide by zero when a window point is mapped
+    // onto the page, so an impossible one is refused rather than stored.
+    if (end <= start) {
+        return;
+    }
+
+    offsetStart = start;
+    offsetEnd = end;
+    positionBackButton();
+}
+
+// Centred in the title bar, near its left edge. The button used to float over
+// the top of the page at a fixed ratio; now that the bar is real chrome the
+// button belongs in it, and follows it when the window is resized.
+void Browser::positionBackButton() {
+    App *app = App::current;
+    if (!backButton || !app || app->viewport.height == 0) {
+        return;
+    }
+
+    float centreY = offsetEnd + (app->titleBarBoxels() * 0.5f) / app->viewport.height;
+    if (app->titleBarBoxels() <= 0.0f) {
+        // X-Plane's own decoration: no bar of ours to sit in, so keep the
+        // historical position floating just inside the top of the page.
+        centreY = offsetEnd - (backButton->relativeHeight / 2.0f);
+    }
+
+    backButton->setPosition(backButton->relativeWidth / 2.0f + 0.01f, centreY);
 }
 
 void Browser::mouseMove(float normalizedX, float normalizedY) {
