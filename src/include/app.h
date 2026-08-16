@@ -74,8 +74,17 @@ private:
     int windowDragTop;
     int windowDragRight;
     int windowDragBottom;
+    bool windowResizeActive;
+    int windowResizeStartX;
+    int windowResizeStartY;
+    int windowResizeLeft;
+    int windowResizeTop;
+    int windowResizeRight;
+    int windowResizeBottom;
     bool setViewport(int x, int y, unsigned short width, unsigned short height);
     void drawWindowBackground();
+    void drawTitleBar();
+    void drawResizeFooter();
     bool isWindowDragRegion(float normalizedX, float normalizedY) const;
     // Raise or drop the notification-only window. Raising shows the X-Plane
     // window without showing the browser, so draw() paints the toast and
@@ -89,8 +98,26 @@ public:
 
     static constexpr unsigned short defaultWindowWidth = 1024;
     static constexpr unsigned short defaultWindowHeight = 768;
-    static constexpr float browserTopRatio = 1.0f;
-    static constexpr float toolbarY = 0.985f;
+
+    // Chrome we draw ourselves in titleless mode, in boxels: a title bar above
+    // the page and a footer carrying the resize grip below it.
+    //
+    // The page is laid out inside what is left, and registerWindow adds these
+    // back on to the size the manifest asked for. Before this, the page filled
+    // the window and the drag strip was painted over the top of it, so an app's
+    // own header sat underneath our chrome. Reserving the space instead is what
+    // keeps a manifest's width/height meaning the size of the *page*.
+    static constexpr float titleBarHeight = 28.0f;
+    static constexpr float resizeFooterHeight = 16.0f;
+    // Side of the square hit area for the resize grip, inset into the footer's
+    // right end.
+    static constexpr float resizeGripSize = 14.0f;
+
+    // Smallest page the window may be shrunk to. The window's own floor is
+    // this plus the chrome, so the limit means the same thing before and after
+    // the chrome existed.
+    static constexpr int minimumContentWidth = 640;
+    static constexpr int minimumContentHeight = 480;
 
     std::string name;
     std::string id;
@@ -126,6 +153,26 @@ public:
     bool dragWindow(int x, int y);
     void endWindowDrag();
     bool isDraggingWindow() const;
+
+    // Boxels reserved above and below the page. Both are zero when X-Plane
+    // draws the decoration: there the simulator owns the title bar and the
+    // resizing, so there is nothing for us to keep clear.
+    float titleBarBoxels() const;
+    float footerBoxels() const;
+    float chromeBoxels() const;
+    // The page's extent within the window, normalized, bottom then top.
+    float pageBottomRatio() const;
+    float pageTopRatio() const;
+
+    // The resize grip. X-Plane already resizes a self-decorated-resizable
+    // window from its edges, but nothing on screen says so; this is the
+    // affordance, and it drives the geometry itself so it behaves the same on
+    // every platform.
+    bool isResizeGripRegion(float normalizedX, float normalizedY) const;
+    bool beginWindowResize(float normalizedX, float normalizedY, int x, int y);
+    bool resizeWindow(int x, int y);
+    void endWindowResize();
+    bool isResizingWindow() const;
 
     void showBrowser(std::string url = "");
     void hideBrowser();

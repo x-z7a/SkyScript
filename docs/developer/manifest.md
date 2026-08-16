@@ -24,10 +24,10 @@ notification_corner: bottom-right
 | `scroll_speed` | integer | `5` | Scroll sensitivity multiplier. |
 | `user_agent` | string | *(default Chrome UA)* | Custom `User-Agent` header sent with every request. |
 | `forced_language` | string | *(auto-detected)* | Override the browser language. Format: `en-US,en` or `fr-FR,fr`. |
-| `width` | integer | `1024` | Initial window width in pixels. |
-| `height` | integer | `768` | Initial window height in pixels. |
+| `width` | integer | `1024` | Initial **page** width in pixels. |
+| `height` | integer | `768` | Initial **page** height in pixels. With `window_titleless` the window is created taller so the page still gets this height — see [Window chrome](#window-chrome). |
 | `console_logging` | boolean | `true` | Forward `console.log`/`warn`/`error` to X-Plane's `Log.txt`. Set to `false` for noisy apps. |
-| `window_titleless` | boolean | `true` | Use SkyScript's titleless self-decorated window instead of X-Plane's native title bar. |
+| `window_titleless` | boolean | `true` | Use SkyScript's titleless self-decorated window instead of X-Plane's native title bar. See [Window chrome](#window-chrome). |
 | `window_opacity` | float | `0.96` | Browser texture opacity when `window_titleless` is enabled. Use `1` for a fully solid window. |
 | `notification_corner` | string | `top-right` | Default notification location. Values: `top-left`, `top-right`, `bottom-left`, `bottom-right`. Alias: `notification_location`. |
 | `notification_timeout` | float | `5` | Default auto-dismiss timeout in seconds. Use `0` to keep notifications visible until dismissed. Alias: `notification_timeout_seconds`. |
@@ -37,6 +37,22 @@ notification_corner: bottom-right
 | `default` | boolean | `false` | Default apps appear after a separator in the menu. Used for built-in apps like "About SkyScript". |
 
 Local apps are served through an app-specific `https://*.skyscript.local/` origin at runtime. This keeps pure client apps compatible with modern browser features such as ES modules while still loading files from the app folder.
+
+## Window chrome
+
+With `window_titleless` (the default), SkyScript draws the window decoration itself:
+
+| Part | Height | Contains |
+|------|--------|----------|
+| Title bar | 28px | The app `name`, the back/close button, and the drag region |
+| Page | *the rest* | Your app |
+| Footer | 16px | The resize grip, at the right |
+
+**The chrome sits outside the page, not on top of it.** `width` and `height` are the size of your app, and the window is created 44px taller to hold the two bars. An app asking for `768` gets 768 pixels of page and an 812px window. Your layout never has to leave room for the title bar, and nothing SkyScript draws covers your content.
+
+The title bar is the drag region, so it moves the window. The grip in the footer resizes it, anchored at the top-left corner so the window does not walk across the screen as it grows. X-Plane also resizes the window from its edges; the grip is the visible affordance for the same thing, and it clamps to the same minimum — 640×480 **of page**, so the floor means the same thing whether or not chrome is drawn.
+
+With `window_titleless: false` X-Plane draws its own title bar and owns resizing, so SkyScript reserves nothing and `width`/`height` are the window size as before.
 
 Titleless windows keep X-Plane resizing support and provide a slim draggable strip along the top edge. Apps that hide SkyScript's injected address bar get a slightly taller drag strip.
 

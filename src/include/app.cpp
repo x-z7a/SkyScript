@@ -47,13 +47,22 @@ App::App(const std::string& aName, const std::string& anId, AppType aType, const
     windowDragTop = 0;
     windowDragRight = 0;
     windowDragBottom = 0;
+    windowResizeActive = false;
+    windowResizeStartX = 0;
+    windowResizeStartY = 0;
+    windowResizeLeft = 0;
+    windowResizeTop = 0;
+    windowResizeRight = 0;
+    windowResizeBottom = 0;
     visible = false;
     mouseDown = false;
     browser = nullptr;
     activeCursor = CursorDefault;
     brightness = 1.0f;
+    // The viewport is a window size, and the configured size is a page size.
     unsigned short initWidth = config.width > 0 ? config.width : defaultWindowWidth;
-    unsigned short initHeight = config.height > 0 ? config.height : defaultWindowHeight;
+    unsigned short initHeight = static_cast<unsigned short>(
+        (config.height > 0 ? config.height : defaultWindowHeight) + static_cast<int>(chromeBoxels()));
     viewport = {0, 0, initWidth, initHeight, 0, 0, 0, 0};
 }
 
@@ -65,7 +74,8 @@ void App::initialize() {
     App::current = this;
 
     unsigned short initWidth = config.width > 0 ? config.width : defaultWindowWidth;
-    unsigned short initHeight = config.height > 0 ? config.height : defaultWindowHeight;
+    unsigned short initHeight = static_cast<unsigned short>(
+        (config.height > 0 ? config.height : defaultWindowHeight) + static_cast<int>(chromeBoxels()));
     setViewport(0, 0, initWidth, initHeight);
 
     if (!browser) {
@@ -216,6 +226,14 @@ bool App::syncWindowGeometry(bool resizeBrowser) {
     unsigned short width = static_cast<unsigned short>((std::max)(1, right - left));
     unsigned short height = static_cast<unsigned short>((std::max)(1, top - bottom));
     bool changed = setViewport(left, bottom, width, height);
+    // Pushed every sync rather than only on change: the chrome is a fixed number
+    // of boxels, so its share of the window moves with every resize, and both
+    // drawing and input read these. Every input path reaches here through
+    // normalizeWindowPoint, which is what keeps a click mapped to the same pixel
+    // the page drew.
+    if (browser) {
+        browser->setPageExtent(pageBottomRatio(), pageTopRatio());
+    }
     if (changed && resizeBrowser && browser) {
         browser->resize();
     }
@@ -286,9 +304,87 @@ void App::drawWindowBackground() {
     glColor4f(0.02f, 0.025f, 0.03f, std::clamp(config.window_opacity, 0.2f, 1.0f) * 0.18f);
     Drawing::DrawRoundedRect(0.0f, 0.0f, 1.0f, 1.0f, 8.0f);
 
-    float gripHeight = (config.hide_addressbar ? 24.0f : 10.0f) / viewport.height;
-    glColor4f(0.95f, 0.97f, 1.0f, 0.08f);
-    Drawing::DrawRect(0.0f, 1.0f - gripHeight, 1.0f, 1.0f);
+    drawTitleBar();
+    drawResizeFooter();
+}
+
+// A real bar rather than the translucent highlight this used to be. It reads as
+// chrome because it is opaque, lighter than the page behind it, and closed off
+// by a rule -- the same three things every window manager uses to say "this
+// strip is not the document". The whole bar is the drag region.
+void App::drawTitleBar() {
+    if (viewport.height == 0) {
+        return;
+    }
+
+    float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
+    float top = 1.0f;
+    float bottom = pageTopRatio();
+
+    glColor4f(0.105f, 0.125f, 0.15f, opacity * 0.94f);
+    Drawing::DrawRect(0.0f, bottom, 1.0f, top);
+
+    // The bar's own bottom row of pixels, so the boundary reads as a rule
+    // without the bar losing height to it.
+    glColor4f(0.95f, 0.97f, 1.0f, 0.16f);
+    Drawing::DrawRect(0.0f, bottom, 1.0f, bottom + (1.0f / viewport.height));
+
+    if (name.empty()) {
+        return;
+    }
+
+    // Clears the back/close button, which sits at the bar's left end in both
+    // address-bar modes. DrawText centres on x, so the left edge of the string
+    // is the inset and the x passed is the inset plus half the width.
+    float inset = 34.0f / viewport.width;
+    float textWidth = Drawing::TextWidth(name);
+    float centreY = bottom + (titleBarBoxels() * 0.5f) / viewport.height;
+    Drawing::DrawText(name, inset + textWidth / 2.0f, centreY, 1.0f, { 0.82f, 0.87f, 0.93f });
+}
+
+// The footer exists so the grip has somewhere to live that is not on top of the
+// page. It is the same band as the title bar, which also gives the window a
+// bottom edge to sit on rather than the page running into the rounded corner.
+void App::drawResizeFooter() {
+    if (viewport.height == 0 || viewport.width == 0) {
+        return;
+    }
+
+    // Re-asserted because drawTitleBar may have drawn the app name just before
+    // this, and XPLMDrawString leaves the texturing state set up for glyphs.
+    XPLMSetGraphicsState(
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0);
+
+    float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
+    float top = pageBottomRatio();
+
+    glColor4f(0.105f, 0.125f, 0.15f, opacity * 0.94f);
+    Drawing::DrawRect(0.0f, 0.0f, 1.0f, top);
+
+    glColor4f(0.95f, 0.97f, 1.0f, 0.16f);
+    Drawing::DrawRect(0.0f, top - (1.0f / viewport.height), 1.0f, top);
+
+    // Three stacked diagonals: the grip every desktop toolkit draws, so it needs
+    // no label to be understood.
+    float right = 1.0f - (5.0f / viewport.width);
+    float bottom = 3.0f / viewport.height;
+    float span = (resizeGripSize - 5.0f);
+
+    glColor4f(0.95f, 0.97f, 1.0f, 0.55f);
+    for (int line = 0; line < 3; ++line) {
+        float offset = line * 4.0f;
+        float x1 = right - (span - offset) / viewport.width;
+        float y1 = bottom;
+        float x2 = right;
+        float y2 = bottom + (span - offset) / viewport.height;
+        Drawing::DrawLine(x1, y1, x2, y2, 1.5f);
+    }
 }
 
 bool App::isWindowDragRegion(float normalizedX, float normalizedY) const {
@@ -301,8 +397,10 @@ bool App::isWindowDragRegion(float normalizedX, float normalizedY) const {
         return false;
     }
 
-    float dragHeight = (config.hide_addressbar ? 24.0f : 10.0f) / viewport.height;
-    return normalizedX >= 0.0f && normalizedX <= 1.0f && normalizedY >= 1.0f - dragHeight && normalizedY <= 1.0f;
+    // The whole title bar drags, which it can now afford to be: it is no longer
+    // a strip stolen from the top of the page, so widening it costs the app
+    // nothing.
+    return normalizedX >= 0.0f && normalizedX <= 1.0f && normalizedY >= pageTopRatio() && normalizedY <= 1.0f;
 }
 
 bool App::beginWindowDrag(float normalizedX, float normalizedY, int x, int y) {
@@ -345,6 +443,79 @@ bool App::dragWindow(int x, int y) {
 void App::endWindowDrag() {
     windowDragActive = false;
     mouseDown = false;
+}
+
+bool App::isResizeGripRegion(float normalizedX, float normalizedY) const {
+    if (!config.window_titleless || !window || viewport.height == 0 || viewport.width == 0) {
+        return false;
+    }
+
+    bool isVrEnabled = Dataref::getInstance()->getCached<int>("sim/graphics/VR/enabled") != 0;
+    if (isVrEnabled) {
+        return false;
+    }
+
+    // A square in the footer's right end, slightly larger than the drawn
+    // diagonals so it is reachable without pixel-hunting.
+    float left = 1.0f - (resizeGripSize + 6.0f) / viewport.width;
+    float top = (resizeGripSize + 2.0f) / viewport.height;
+    return normalizedX >= left && normalizedX <= 1.0f && normalizedY >= 0.0f && normalizedY <= top;
+}
+
+bool App::beginWindowResize(float normalizedX, float normalizedY, int x, int y) {
+    if (!isResizeGripRegion(normalizedX, normalizedY)) {
+        return false;
+    }
+
+    XPLMGetWindowGeometry(window, &windowResizeLeft, &windowResizeTop, &windowResizeRight, &windowResizeBottom);
+    windowResizeStartX = x;
+    windowResizeStartY = y;
+    windowResizeActive = true;
+    mouseDown = true;
+
+    if (browser) {
+        browser->setFocus(false);
+    }
+    XPLMTakeKeyboardFocus(0);
+
+    return true;
+}
+
+bool App::resizeWindow(int x, int y) {
+    if (!windowResizeActive || !window) {
+        return false;
+    }
+
+    // Bottom-right grip: the left and top edges are the anchor, so only the
+    // right and bottom move and the window does not walk across the screen as
+    // it is resized.
+    int right = windowResizeRight + (x - windowResizeStartX);
+    int bottom = windowResizeBottom + (y - windowResizeStartY);
+
+    // The same floor XPLMSetWindowResizingLimits enforces for X-Plane's own
+    // edge handles, applied here because we are setting the geometry directly.
+    int minimumWidth = (std::max)(static_cast<int>(config.minimum_width), minimumContentWidth);
+    int minimumHeight = minimumContentHeight + static_cast<int>(chromeBoxels());
+    if (right - windowResizeLeft < minimumWidth) {
+        right = windowResizeLeft + minimumWidth;
+    }
+    if (windowResizeTop - bottom < minimumHeight) {
+        bottom = windowResizeTop - minimumHeight;
+    }
+
+    XPLMSetWindowGeometry(window, windowResizeLeft, windowResizeTop, right, bottom);
+    syncWindowGeometry(true);
+
+    return true;
+}
+
+void App::endWindowResize() {
+    windowResizeActive = false;
+    mouseDown = false;
+}
+
+bool App::isResizingWindow() const {
+    return windowResizeActive;
 }
 
 bool App::isDraggingWindow() const {
@@ -530,12 +701,45 @@ void App::postMessageToJS(const std::string& channel, const std::string& payload
     }
 }
 
+float App::titleBarBoxels() const {
+    return config.window_titleless ? titleBarHeight : 0.0f;
+}
+
+float App::footerBoxels() const {
+    return config.window_titleless ? resizeFooterHeight : 0.0f;
+}
+
+float App::chromeBoxels() const {
+    return titleBarBoxels() + footerBoxels();
+}
+
+float App::pageBottomRatio() const {
+    if (viewport.height == 0) {
+        return 0.0f;
+    }
+
+    return footerBoxels() / viewport.height;
+}
+
+float App::pageTopRatio() const {
+    if (viewport.height == 0) {
+        return 1.0f;
+    }
+
+    return 1.0f - (titleBarBoxels() / viewport.height);
+}
+
 bool App::setViewport(int x, int y, unsigned short width, unsigned short height) {
     unsigned short safeWidth = (std::max<unsigned short>)(1, width);
     unsigned short safeHeight = (std::max<unsigned short>)(1, height);
     float multiplier = safeWidth < config.minimum_width ? static_cast<float>(config.minimum_width) / safeWidth : 1.0f;
     unsigned short browserWidth = static_cast<unsigned short>(std::ceil(safeWidth * multiplier));
-    unsigned short browserHeight = static_cast<unsigned short>((std::max)(1.0f, std::ceil((safeHeight * browserTopRatio) * multiplier)));
+    // The page gets the window less the chrome. registerWindow grows the window
+    // by the same amount, so a manifest asking for 1024x768 rasterises 1024x768
+    // of page rather than 768 minus whatever we drew on top of it.
+    unsigned short chrome = static_cast<unsigned short>(chromeBoxels());
+    unsigned short contentHeight = safeHeight > chrome ? static_cast<unsigned short>(safeHeight - chrome) : 1;
+    unsigned short browserHeight = static_cast<unsigned short>((std::max)(1.0f, std::ceil(contentHeight * multiplier)));
     unsigned short textureWidth = nextPowerOfTwo(browserWidth);
     unsigned short textureHeight = nextPowerOfTwo(browserHeight);
 
@@ -574,7 +778,10 @@ void App::registerWindow() {
     float screenWidth = fabs(winLeft - winRight);
     float screenHeight = fabs(winTop - winBot);
     int width = config.width > 0 ? config.width : defaultWindowWidth;
-    int height = config.height > 0 ? config.height : defaultWindowHeight;
+    // The manifest asks for a page size, so the window is that plus the chrome.
+    // Reserving the chrome out of the requested height instead would silently
+    // shrink every existing app's page by 44 boxels.
+    int height = (config.height > 0 ? config.height : defaultWindowHeight) + static_cast<int>(chromeBoxels());
 
     XPLMCreateWindow_t params;
     params.structSize = sizeof(params);
@@ -608,6 +815,17 @@ void App::registerWindow() {
             return 1;
         }
 
+        if (app->isResizingWindow()) {
+            if (status == xplm_MouseDrag) {
+                app->resizeWindow(x, y);
+            }
+            else if (status == xplm_MouseUp) {
+                app->endWindowResize();
+            }
+            App::current = nullptr;
+            return 1;
+        }
+
         float mouseX, mouseY;
         if (!app->normalizeWindowPoint(x, y, &mouseX, &mouseY)) {
             if (app->browser->hasInputFocus()) {
@@ -618,6 +836,14 @@ void App::registerWindow() {
         }
 
         if (status == xplm_MouseDown && app->updateButtons(mouseX, mouseY, kButtonClick)) {
+            App::current = nullptr;
+            return 1;
+        }
+
+        // Before the drag test: the grip sits in the footer and the title bar
+        // owns the drag, so the two never overlap, but ordering it this way
+        // keeps that true if either region ever grows.
+        if (status == xplm_MouseDown && app->beginWindowResize(mouseX, mouseY, x, y)) {
             App::current = nullptr;
             return 1;
         }
@@ -721,7 +947,10 @@ void App::registerWindow() {
         }
 
         CursorType wantedCursor = CursorDefault;
-        if (app->updateButtons(mouseX, mouseY, kButtonHover)) {
+        if (app->isResizeGripRegion(mouseX, mouseY)) {
+            wantedCursor = CursorResize;
+        }
+        else if (app->updateButtons(mouseX, mouseY, kButtonHover)) {
             wantedCursor = CursorHand;
         }
         else if (app->visible && app->browser->cursor() != CursorDefault) {
@@ -749,7 +978,14 @@ void App::registerWindow() {
     if (!config.window_titleless) {
         XPLMSetWindowTitle(window, name.c_str());
     }
-    XPLMSetWindowResizingLimits(window, 640, 480, 4096, 4096);
+    // The floor is a *page* floor, so it moves with the chrome: 480 of window
+    // would otherwise mean 436 of page once the bars are taken out.
+    XPLMSetWindowResizingLimits(
+        window,
+        minimumContentWidth,
+        minimumContentHeight + static_cast<int>(chromeBoxels()),
+        4096,
+        4096);
     syncWindowGeometry(false);
     applyWindowMode();
     XPLMSetWindowIsVisible(window, 0);

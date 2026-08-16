@@ -31,6 +31,7 @@ private:
     void updateGPSLocation();
     CefMouseEvent getMouseEvent(float normalizedX, float normalizedY);
     void registerLocalAppRoot();
+    void positionBackButton();
     std::string prepareUrlForLoad(const std::string& url);
     
 public:
@@ -44,6 +45,11 @@ public:
     void update();
     void draw();
     void resize();
+    // Where the page sits in the window, normalized. The App owns this because
+    // it owns the chrome drawn above and below the page; the browser uses it
+    // both to place its quad and to map a window point onto a page point, so
+    // the two cannot disagree about where the page is.
+    void setPageExtent(float start, float end);
     void loadUrl(std::string url);
     bool hasInputFocus();
     void setFocus(bool focus);
