@@ -19,6 +19,7 @@ extern "C" {
 void initializeCursor();
 void setCursor(CursorType cursor);
 void destroyCursor();
+bool isCommandKeyDown();
 
 #if APL
 #ifdef __cplusplus

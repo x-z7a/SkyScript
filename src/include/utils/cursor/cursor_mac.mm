@@ -6,6 +6,10 @@ extern "C" void initializeCursor() {}
 
 extern "C" void destroyCursor() {}
 
+extern "C" bool isCommandKeyDown() {
+    return (CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState) & kCGEventFlagMaskCommand) != 0;
+}
+
 extern "C" void setCursor(CursorType cursor) {
     switch (cursor) {
         case CursorHand:

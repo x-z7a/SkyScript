@@ -5,6 +5,10 @@ void initializeCursor() {}
 
 void destroyCursor() {}
 
+bool isCommandKeyDown() {
+    return false;
+}
+
 void setCursor(CursorType cursor) {
     switch (cursor) {
         case CursorHand:
