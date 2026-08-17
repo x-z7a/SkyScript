@@ -31,6 +31,10 @@ void destroyCursor() {
 //    }
 }
 
+bool isCommandKeyDown() {
+    return false;
+}
+
 void setCursorX11(int cursorType) {
 //    if (cursor) {
 //        XFreeCursor(x11Display, cursor);
@@ -63,4 +67,3 @@ void setCursor(CursorType cursor) {
 //    }
 }
 #endif
-

@@ -115,6 +115,34 @@ bool isWithinRoot(const std::filesystem::path& candidate, const std::filesystem:
     return !ec && !hasParentTraversal(relative);
 }
 
+char shortcutLetter(unsigned char key, unsigned char virtualKey) {
+    if (virtualKey >= 'A' && virtualKey <= 'Z') {
+        return static_cast<char>(std::tolower(virtualKey));
+    }
+    if (virtualKey >= 'a' && virtualKey <= 'z') {
+        return static_cast<char>(virtualKey);
+    }
+    if (std::isalpha(key)) {
+        return static_cast<char>(std::tolower(key));
+    }
+
+    switch (key) {
+        case 1:
+            return 'a';
+        case 3:
+            return 'c';
+        case 22:
+            return 'v';
+        default:
+            return '\0';
+    }
+}
+
+CefRefPtr<CefFrame> focusedOrMainFrame(CefRefPtr<CefBrowser> browser) {
+    CefRefPtr<CefFrame> frame = browser->GetFocusedFrame();
+    return frame ? frame : browser->GetMainFrame();
+}
+
 cef_uri_unescape_rule_t pathUnescapeRules() {
     return static_cast<cef_uri_unescape_rule_t>(UU_NORMAL | UU_SPACES | UU_PATH_SEPARATORS);
 }
@@ -669,22 +697,33 @@ void Browser::key(unsigned char key, unsigned char virtualKey, XPLMKeyFlags flag
         keyEvent.modifiers |= EVENTFLAG_ALT_DOWN;
     }
 
-    if ((flags & xplm_ControlFlag) == xplm_ControlFlag) {
-        keyEvent.modifiers |= EVENTFLAG_CONTROL_DOWN;
+    bool controlKeyDown = (flags & xplm_ControlFlag) == xplm_ControlFlag;
+    bool commandKeyDown = isCommandKeyDown();
 
-        if (key == 'a') {
+    if (controlKeyDown) {
+        keyEvent.modifiers |= EVENTFLAG_CONTROL_DOWN;
+    }
+
+    if (commandKeyDown) {
+        keyEvent.modifiers |= EVENTFLAG_COMMAND_DOWN;
+    }
+
+    if (controlKeyDown || commandKeyDown) {
+        char shortcut = shortcutLetter(key, virtualKey);
+
+        if (shortcut == 'a') {
             if (keyEvent.type == KEYEVENT_KEYDOWN) {
-                handler->browserInstance->GetMainFrame()->SelectAll();
+                focusedOrMainFrame(handler->browserInstance)->SelectAll();
             }
             return;
-        } else if (key == 'c') {
+        } else if (shortcut == 'c') {
             if (keyEvent.type == KEYEVENT_KEYDOWN) {
-                handler->browserInstance->GetMainFrame()->Copy();
+                focusedOrMainFrame(handler->browserInstance)->Copy();
             }
             return;
-        } else if (key == 'v') {
+        } else if (shortcut == 'v') {
             if (keyEvent.type == KEYEVENT_KEYDOWN) {
-                handler->browserInstance->GetMainFrame()->Paste();
+                focusedOrMainFrame(handler->browserInstance)->Paste();
             }
             return;
         }
