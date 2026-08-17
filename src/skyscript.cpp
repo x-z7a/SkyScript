@@ -12,10 +12,16 @@
 
 #include <XPLMDisplay.h>
 #include <XPLMProcessing.h>
+#include <XPLMUtilities.h>
 
 namespace {
 std::vector<App*> managedApps;
 App* activeApp = nullptr;
+
+// Whether this image has already been initialized. One plugin initializes
+// once, so a second initialize means two plugins share this library. See
+// SkyScript::initialize.
+bool initialized = false;
 
 void scanApps() {
     std::string pluginDir = Path::getInstance()->pluginDirectory;
@@ -111,23 +117,63 @@ void scanApps() {
     managedApps = ordered;
 }
 
-void createToggleCommand() {
-    Dataref::getInstance()->createCommand("skyscript/toggle", "Show or hide the last active app", [](XPLMCommandPhase inPhase) {
-        if (inPhase != xplm_CommandBegin) {
-            return;
-        }
+// The plugin's folder name, used to namespace the commands this consumer owns.
+// Per-app commands are already unique because the app id comes from its folder,
+// but anything global is not, and X-Plane has one command namespace for the
+// whole sim.
+std::string pluginNamespace() {
+    const std::string& directory = Path::getInstance()->pluginDirectory;
+    if (directory.empty()) {
+        return "";
+    }
 
-        if (activeApp) {
-            if (activeApp->visible) {
-                activeApp->hideBrowser();
-            } else {
-                activeApp->showBrowser();
-            }
-        } else if (!managedApps.empty()) {
-            managedApps[0]->showBrowser();
-            activeApp = managedApps[0];
+    size_t separator = directory.find_last_of("/\\");
+    return separator == std::string::npos ? directory : directory.substr(separator + 1);
+}
+
+void toggleActiveApp(XPLMCommandPhase inPhase) {
+    if (inPhase != xplm_CommandBegin) {
+        return;
+    }
+
+    if (activeApp) {
+        if (activeApp->visible) {
+            activeApp->hideBrowser();
+        } else {
+            activeApp->showBrowser();
         }
-    });
+    } else if (!managedApps.empty()) {
+        managedApps[0]->showBrowser();
+        activeApp = managedApps[0];
+    }
+}
+
+void createToggleCommand() {
+    const std::string prefix = pluginNamespace();
+
+    // Every plugin gets a toggle only it owns. Two SkyScript-based plugins in
+    // one sim otherwise both register skyscript/toggle, and since
+    // XPLMCreateCommand hands back the existing command rather than failing,
+    // they would share one binding that toggles whichever app answered first.
+    if (!prefix.empty()) {
+        Dataref::getInstance()->createCommand(
+            ("skyscript/" + prefix + "/toggle").c_str(),
+            "Show or hide the last active app",
+            toggleActiveApp);
+    }
+
+    // The un-namespaced name stays for anyone who has already bound it to a
+    // key, but only the first plugin to claim it gets it. Attaching a second
+    // handler is what made one keypress toggle another plugin's window.
+    if (XPLMFindCommand("skyscript/toggle") == nullptr) {
+        Dataref::getInstance()->createCommand(
+            "skyscript/toggle",
+            "Show or hide the last active app",
+            toggleActiveApp);
+    } else if (!prefix.empty()) {
+        debug("skyscript/toggle is already owned by another plugin; use skyscript/%s/toggle\n",
+              prefix.c_str());
+    }
 }
 
 float flightLoopCallback(float inElapsedSinceLastCall, float inElapsedTimeSinceLastFlightLoop, int inCounter, void* inRefcon) {
@@ -173,6 +219,31 @@ float flightLoopCallback(float inElapsedSinceLastCall, float inElapsedTimeSinceL
 namespace SkyScript {
 
 void initialize() {
+    // A plugin initializes SkyScript exactly once, so a second call without an
+    // intervening shutdown means two plugins are running against one copy of
+    // this library.
+    //
+    // That happens because every SkyScript-based plugin ships a library with
+    // the same identity -- @rpath/libSkyScriptLib.dylib, SONAME
+    // libSkyScriptLib.so, module SkyScriptLib.dll -- and loaders key images by
+    // identity rather than by path. The second plugin loaded gets the first
+    // one's image, and with it the Path singleton, the app registry and the
+    // dataref bindings. It then serves the *other* plugin's apps while
+    // reporting success, which is a miserable thing to debug from Log.txt.
+    //
+    // This cannot be repaired from in here: by the time we notice, both
+    // plugins are already bound to one set of globals. So it is called out
+    // loudly instead, with the fix, rather than left to look like a working
+    // plugin that shows the wrong window.
+    if (initialized) {
+        debug("ERROR: SkyScript is already initialized in this process.\n");
+        debug("ERROR: Two plugins are sharing one copy of the library, so this one\n");
+        debug("ERROR: will use the other's plugin directory and apps.\n");
+        debug("ERROR: Give each plugin's copy a unique identity -- see\n");
+        debug("ERROR: scripts/unique-library-identity.sh in the SkyScript repo.\n");
+    }
+    initialized = true;
+
     Path::getInstance()->reloadPaths();
     initializeCursor();
     XPLMRegisterFlightLoopCallback(flightLoopCallback, REFRESH_INTERVAL_SECONDS_SLOW, nullptr);
@@ -199,6 +270,7 @@ void shutdown() {
     XPLMUnregisterFlightLoopCallback(flightLoopCallback, nullptr);
     destroyAllAppWindows();
     destroyCursor();
+    initialized = false;
 }
 
 bool loadAppsFromDirectory() {

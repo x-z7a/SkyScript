@@ -23,6 +23,7 @@ export default defineConfig({
             { text: 'C++ Library API', link: '/developer/cpp-api' },
             { text: 'App Manifest', link: '/developer/manifest' },
             { text: 'JavaScript API', link: '/developer/api' },
+            { text: 'Running Two Plugins', link: '/developer/multiple-plugins' },
           ],
         },
       ],
