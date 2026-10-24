@@ -1,7 +1,7 @@
 // Example X-Plane plugin using the SkyScript shared library via C API.
 //
 // Demonstrates how to use SkyScript as a shared library (.dll/.dylib/.so)
-// to create CEF browser windows inside X-Plane. Scans the apps/ directory,
+// to create browser windows inside X-Plane. Scans the apps/ directory,
 // builds menus, and manages app visibility — all through SkyScript's C API.
 //
 // Using the C API (skyscript_c.h) avoids C++ ABI coupling, allowing this

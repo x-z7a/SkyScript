@@ -2,7 +2,6 @@
 
 #include "browser.h"
 #include "include/config.h"
-#include "include/utils/cursor/cursor.h"
 #include "include/utils/dataref.h"
 #include "include/utils/path.h"
 
@@ -85,7 +84,7 @@ void scanApps() {
 
         if (appConfig.homepage.empty() || appConfig.homepage == App::defaultConfig().homepage) {
             if (std::filesystem::exists(indexPath)) {
-                appConfig.homepage = "file://" + indexPath;
+                appConfig.homepage = Browser::fileUrlForPath(indexPath);
             }
         }
 
@@ -191,24 +190,6 @@ float flightLoopCallback(float inElapsedSinceLastCall, float inElapsedTimeSinceL
         if (app->visible || app->hasNotificationOverlay()) {
             anyVisible = true;
         }
-
-        if (app->visible) {
-            App::current = app;
-            if (app->browser && app->window) {
-                bool hasKeyboardFocus = XPLMHasKeyboardFocus(app->window) != 0;
-                if (app->browser->hasInputFocus() != hasKeyboardFocus) {
-                    if (app->browser->hasInputFocus()) {
-                        app->browser->setFocus(true);
-                        XPLMBringWindowToFront(app->window);
-                        XPLMTakeKeyboardFocus(app->window);
-                    } else {
-                        app->browser->setFocus(false);
-                        XPLMTakeKeyboardFocus(0);
-                    }
-                }
-            }
-            App::current = nullptr;
-        }
     }
 
     return anyVisible ? REFRESH_INTERVAL_SECONDS_FAST : REFRESH_INTERVAL_SECONDS_SLOW;
@@ -245,7 +226,6 @@ void initialize() {
     initialized = true;
 
     Path::getInstance()->reloadPaths();
-    initializeCursor();
     XPLMRegisterFlightLoopCallback(flightLoopCallback, REFRESH_INTERVAL_SECONDS_SLOW, nullptr);
 
     Dataref::getInstance()->monitorExistingDataref<bool>("sim/graphics/VR/enabled", [](bool isVrEnabled) {
@@ -269,7 +249,6 @@ void setPluginPath(const std::string& path) {
 void shutdown() {
     XPLMUnregisterFlightLoopCallback(flightLoopCallback, nullptr);
     destroyAllAppWindows();
-    destroyCursor();
     initialized = false;
 }
 

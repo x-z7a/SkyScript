@@ -7,27 +7,14 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
-#include <limits>
 #include <sstream>
 
 #include "browser.h"
 #include "button.h"
 #include "config.h"
 #include "dataref.h"
-#include "drawing.h"
 #include "notification.h"
 #include "path.h"
-
-namespace {
-unsigned short nextPowerOfTwo(unsigned int value) {
-    unsigned int result = 1;
-    while (result < value) {
-        result <<= 1;
-    }
-
-    return static_cast<unsigned short>((std::min)(result, static_cast<unsigned int>(std::numeric_limits<unsigned short>::max())));
-}
-}
 
 App* App::current = nullptr;
 
@@ -40,30 +27,13 @@ App::App(const std::string& aName, const std::string& anId, AppType aType, const
     notification = nullptr;
     notificationOverlay = false;
     window = nullptr;
-    windowDragActive = false;
-    windowDragStartX = 0;
-    windowDragStartY = 0;
-    windowDragLeft = 0;
-    windowDragTop = 0;
-    windowDragRight = 0;
-    windowDragBottom = 0;
-    windowResizeActive = false;
-    windowResizeStartX = 0;
-    windowResizeStartY = 0;
-    windowResizeLeft = 0;
-    windowResizeTop = 0;
-    windowResizeRight = 0;
-    windowResizeBottom = 0;
+    overlayWindow = nullptr;
     visible = false;
-    mouseDown = false;
     browser = nullptr;
-    activeCursor = CursorDefault;
     brightness = 1.0f;
-    // The viewport is a window size, and the configured size is a page size.
     unsigned short initWidth = config.width > 0 ? config.width : defaultWindowWidth;
-    unsigned short initHeight = static_cast<unsigned short>(
-        (config.height > 0 ? config.height : defaultWindowHeight) + static_cast<int>(chromeBoxels()));
-    viewport = {0, 0, initWidth, initHeight, 0, 0, 0, 0};
+    unsigned short initHeight = config.height > 0 ? config.height : defaultWindowHeight;
+    viewport = {0, 0, initWidth, initHeight};
 }
 
 App::~App() {
@@ -73,13 +43,8 @@ App::~App() {
 void App::initialize() {
     App::current = this;
 
-    unsigned short initWidth = config.width > 0 ? config.width : defaultWindowWidth;
-    unsigned short initHeight = static_cast<unsigned short>(
-        (config.height > 0 ? config.height : defaultWindowHeight) + static_cast<int>(chromeBoxels()));
-    setViewport(0, 0, initWidth, initHeight);
-
     if (!browser) {
-        browser = new Browser();
+        browser = new Browser(this);
     }
 
     browser->initialize();
@@ -100,16 +65,6 @@ void App::initialize() {
         }
     });
 
-    Dataref::getInstance()->createCommand((datarefPrefix + "/devtools").c_str(), ("Toggle developer tools for " + name).c_str(), [this](XPLMCommandPhase inPhase) {
-        if (inPhase != xplm_CommandBegin) {
-            return;
-        }
-
-        if (browser) {
-            browser->showDevTools();
-        }
-    });
-
     App::current = nullptr;
 }
 
@@ -119,7 +74,6 @@ void App::deinitialize() {
     std::string datarefPrefix = "skyscript/" + id;
     Dataref::getInstance()->unbind((datarefPrefix + "/visible").c_str());
     Dataref::getInstance()->unbind((datarefPrefix + "/toggle").c_str());
-    Dataref::getInstance()->unbind((datarefPrefix + "/devtools").c_str());
     Dataref::getInstance()->unbind((datarefPrefix + "/url").c_str());
     Dataref::getInstance()->unbind((datarefPrefix + "/refresh").c_str());
 
@@ -128,7 +82,13 @@ void App::deinitialize() {
     if (browser) {
         browser->visibilityWillChange(false);
         browser->destroy();
+        delete browser;
         browser = nullptr;
+    }
+
+    if (overlayWindow) {
+        XPLMDestroyWindow(overlayWindow);
+        overlayWindow = nullptr;
     }
 
     if (window) {
@@ -138,10 +98,8 @@ void App::deinitialize() {
 
     tasks.clear();
     buttons.clear();
-    windowDragActive = false;
     notificationOverlay = false;
     visible = false;
-    activeCursor = CursorDefault;
     brightness = 1.0f;
 
     App::current = nullptr;
@@ -157,14 +115,15 @@ void App::update() {
 
     brightness = 1.0f;
 
-    if (visible) {
-        syncWindowGeometry();
+    // X-Plane's title bar has a close button, and closing the window that way
+    // never goes through hideBrowser.
+    if (visible && window && !XPLMGetWindowIsVisible(window)) {
+        browser->visibilityWillChange(false);
+        visible = false;
     }
-    else if (notificationOverlay) {
-        // The toast lays itself out against the viewport, so it still needs
-        // real geometry. The browser is hidden, so it must not be resized to
-        // match: that would rasterise a page nobody is looking at.
-        syncWindowGeometry(false);
+
+    if (notificationOverlay) {
+        syncOverlayGeometry();
     }
 
     browser->update();
@@ -191,67 +150,39 @@ void App::update() {
     App::current = nullptr;
 }
 
+// The overlay window's draw callback. The browser window draws itself, so all
+// that is ever drawn here is the notification.
 void App::draw() {
-    if (!visible && !notificationOverlay) {
+    if (!notificationOverlay || !notification || !overlayWindow) {
         return;
     }
 
     App::current = this;
 
-    syncWindowGeometry(visible);
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(overlayWindow, &left, &top, &right, &bottom);
+    setViewport(left, bottom, static_cast<unsigned short>((std::max)(1, right - left)), static_cast<unsigned short>((std::max)(1, top - bottom)));
 
-    // With the browser hidden the window exists only to carry the toast, so
-    // neither the window background nor the page is painted -- what the user
-    // sees is the notification alone, floating over the cockpit.
-    if (visible) {
-        drawWindowBackground();
-        browser->draw();
-    }
-
-    if (notification) {
-        notification->draw();
-    }
+    notification->draw();
 
     App::current = nullptr;
 }
 
-bool App::syncWindowGeometry(bool resizeBrowser) {
-    if (!window) {
-        return false;
+void App::syncOverlayGeometry() {
+    if (!window || !overlayWindow) {
+        return;
     }
 
+    // The browser window keeps its last geometry while hidden, so a toast
+    // raised with the app closed still lands where the app would be.
     int left, top, right, bottom;
     XPLMGetWindowGeometry(window, &left, &top, &right, &bottom);
 
-    unsigned short width = static_cast<unsigned short>((std::max)(1, right - left));
-    unsigned short height = static_cast<unsigned short>((std::max)(1, top - bottom));
-    bool changed = setViewport(left, bottom, width, height);
-    // Pushed every sync rather than only on change: the chrome is a fixed number
-    // of boxels, so its share of the window moves with every resize, and both
-    // drawing and input read these. Every input path reaches here through
-    // normalizeWindowPoint, which is what keeps a click mapped to the same pixel
-    // the page drew.
-    if (browser) {
-        browser->setPageExtent(pageBottomRatio(), pageTopRatio());
+    int overlayLeft, overlayTop, overlayRight, overlayBottom;
+    XPLMGetWindowGeometry(overlayWindow, &overlayLeft, &overlayTop, &overlayRight, &overlayBottom);
+    if (left != overlayLeft || top != overlayTop || right != overlayRight || bottom != overlayBottom) {
+        XPLMSetWindowGeometry(overlayWindow, left, top, right, bottom);
     }
-    if (changed && resizeBrowser && browser) {
-        browser->resize();
-    }
-
-    return changed;
-}
-
-bool App::normalizeWindowPoint(int x, int y, float *normalizedX, float *normalizedY) {
-    syncWindowGeometry(false);
-
-    if (viewport.width == 0 || viewport.height == 0) {
-        return false;
-    }
-
-    *normalizedX = static_cast<float>(x - viewport.x) / viewport.width;
-    *normalizedY = static_cast<float>(y - viewport.y) / viewport.height;
-
-    return !(*normalizedX < -0.1f || *normalizedX > 1.1f || *normalizedY < -0.1f || *normalizedY > 1.1f);
 }
 
 void App::applyWindowMode() {
@@ -262,18 +193,15 @@ void App::applyWindowMode() {
     bool isVrEnabled = Dataref::getInstance()->get<bool>("sim/graphics/VR/enabled");
     XPLMSetWindowPositioningMode(window, isVrEnabled ? xplm_WindowVR : xplm_WindowPositionFree, -1);
 
+    // The overlay tracks the browser window's 2-D geometry, which has no
+    // meaning for a VR window, so in VR it stands down.
+    if (isVrEnabled && notificationOverlay) {
+        clearNotification();
+    }
+
     if (visible) {
         XPLMBringWindowToFront(window);
     }
-}
-
-bool App::updateButtons(float normalizedX, float normalizedY, ButtonState state) {
-    bool didAct = false;
-    for (const auto& button : buttons) {
-        didAct = didAct || button->handleState(normalizedX, normalizedY, state);
-    }
-
-    return didAct;
 }
 
 void App::registerButton(Button *button) {
@@ -287,241 +215,6 @@ void App::unregisterButton(Button *button) {
     }
 }
 
-void App::drawWindowBackground() {
-    if (!config.window_titleless) {
-        return;
-    }
-
-    XPLMSetGraphicsState(
-        0,
-        0,
-        0,
-        0,
-        1,
-        0,
-        0);
-
-    glColor4f(0.02f, 0.025f, 0.03f, std::clamp(config.window_opacity, 0.2f, 1.0f) * 0.18f);
-    Drawing::DrawRoundedRect(0.0f, 0.0f, 1.0f, 1.0f, 8.0f);
-
-    drawTitleBar();
-    drawResizeFooter();
-}
-
-// A real bar rather than the translucent highlight this used to be. It reads as
-// chrome because it is opaque, lighter than the page behind it, and closed off
-// by a rule -- the same three things every window manager uses to say "this
-// strip is not the document". The whole bar is the drag region.
-void App::drawTitleBar() {
-    if (viewport.height == 0) {
-        return;
-    }
-
-    float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
-    float top = 1.0f;
-    float bottom = pageTopRatio();
-
-    glColor4f(0.105f, 0.125f, 0.15f, opacity * 0.94f);
-    Drawing::DrawRect(0.0f, bottom, 1.0f, top);
-
-    // The bar's own bottom row of pixels, so the boundary reads as a rule
-    // without the bar losing height to it.
-    glColor4f(0.95f, 0.97f, 1.0f, 0.16f);
-    Drawing::DrawRect(0.0f, bottom, 1.0f, bottom + (1.0f / viewport.height));
-
-    if (name.empty()) {
-        return;
-    }
-
-    // Clears the back/close button, which sits at the bar's left end in both
-    // address-bar modes. DrawText centres on x, so the left edge of the string
-    // is the inset and the x passed is the inset plus half the width.
-    float inset = 34.0f / viewport.width;
-    float textWidth = Drawing::TextWidth(name);
-    float centreY = bottom + (titleBarBoxels() * 0.5f) / viewport.height;
-    Drawing::DrawText(name, inset + textWidth / 2.0f, centreY, 1.0f, { 0.82f, 0.87f, 0.93f });
-}
-
-// The footer exists so the grip has somewhere to live that is not on top of the
-// page. It is the same band as the title bar, which also gives the window a
-// bottom edge to sit on rather than the page running into the rounded corner.
-void App::drawResizeFooter() {
-    if (viewport.height == 0 || viewport.width == 0) {
-        return;
-    }
-
-    // Re-asserted because drawTitleBar may have drawn the app name just before
-    // this, and XPLMDrawString leaves the texturing state set up for glyphs.
-    XPLMSetGraphicsState(
-        0,
-        0,
-        0,
-        0,
-        1,
-        0,
-        0);
-
-    float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
-    float top = pageBottomRatio();
-
-    glColor4f(0.105f, 0.125f, 0.15f, opacity * 0.94f);
-    Drawing::DrawRect(0.0f, 0.0f, 1.0f, top);
-
-    glColor4f(0.95f, 0.97f, 1.0f, 0.16f);
-    Drawing::DrawRect(0.0f, top - (1.0f / viewport.height), 1.0f, top);
-
-    // Three stacked diagonals: the grip every desktop toolkit draws, so it needs
-    // no label to be understood.
-    float right = 1.0f - (5.0f / viewport.width);
-    float bottom = 3.0f / viewport.height;
-    float span = (resizeGripSize - 5.0f);
-
-    glColor4f(0.95f, 0.97f, 1.0f, 0.55f);
-    for (int line = 0; line < 3; ++line) {
-        float offset = line * 4.0f;
-        float x1 = right - (span - offset) / viewport.width;
-        float y1 = bottom;
-        float x2 = right;
-        float y2 = bottom + (span - offset) / viewport.height;
-        Drawing::DrawLine(x1, y1, x2, y2, 1.5f);
-    }
-}
-
-bool App::isWindowDragRegion(float normalizedX, float normalizedY) const {
-    if (!config.window_titleless || !window || viewport.height == 0) {
-        return false;
-    }
-
-    bool isVrEnabled = Dataref::getInstance()->getCached<int>("sim/graphics/VR/enabled") != 0;
-    if (isVrEnabled) {
-        return false;
-    }
-
-    // The whole title bar drags, which it can now afford to be: it is no longer
-    // a strip stolen from the top of the page, so widening it costs the app
-    // nothing.
-    return normalizedX >= 0.0f && normalizedX <= 1.0f && normalizedY >= pageTopRatio() && normalizedY <= 1.0f;
-}
-
-bool App::beginWindowDrag(float normalizedX, float normalizedY, int x, int y) {
-    if (!isWindowDragRegion(normalizedX, normalizedY)) {
-        return false;
-    }
-
-    XPLMGetWindowGeometry(window, &windowDragLeft, &windowDragTop, &windowDragRight, &windowDragBottom);
-    windowDragStartX = x;
-    windowDragStartY = y;
-    windowDragActive = true;
-    mouseDown = true;
-
-    if (browser) {
-        browser->setFocus(false);
-    }
-    XPLMTakeKeyboardFocus(0);
-
-    return true;
-}
-
-bool App::dragWindow(int x, int y) {
-    if (!windowDragActive || !window) {
-        return false;
-    }
-
-    int deltaX = x - windowDragStartX;
-    int deltaY = y - windowDragStartY;
-    XPLMSetWindowGeometry(
-        window,
-        windowDragLeft + deltaX,
-        windowDragTop + deltaY,
-        windowDragRight + deltaX,
-        windowDragBottom + deltaY);
-    syncWindowGeometry(false);
-
-    return true;
-}
-
-void App::endWindowDrag() {
-    windowDragActive = false;
-    mouseDown = false;
-}
-
-bool App::isResizeGripRegion(float normalizedX, float normalizedY) const {
-    if (!config.window_titleless || !window || viewport.height == 0 || viewport.width == 0) {
-        return false;
-    }
-
-    bool isVrEnabled = Dataref::getInstance()->getCached<int>("sim/graphics/VR/enabled") != 0;
-    if (isVrEnabled) {
-        return false;
-    }
-
-    // A square in the footer's right end, slightly larger than the drawn
-    // diagonals so it is reachable without pixel-hunting.
-    float left = 1.0f - (resizeGripSize + 6.0f) / viewport.width;
-    float top = (resizeGripSize + 2.0f) / viewport.height;
-    return normalizedX >= left && normalizedX <= 1.0f && normalizedY >= 0.0f && normalizedY <= top;
-}
-
-bool App::beginWindowResize(float normalizedX, float normalizedY, int x, int y) {
-    if (!isResizeGripRegion(normalizedX, normalizedY)) {
-        return false;
-    }
-
-    XPLMGetWindowGeometry(window, &windowResizeLeft, &windowResizeTop, &windowResizeRight, &windowResizeBottom);
-    windowResizeStartX = x;
-    windowResizeStartY = y;
-    windowResizeActive = true;
-    mouseDown = true;
-
-    if (browser) {
-        browser->setFocus(false);
-    }
-    XPLMTakeKeyboardFocus(0);
-
-    return true;
-}
-
-bool App::resizeWindow(int x, int y) {
-    if (!windowResizeActive || !window) {
-        return false;
-    }
-
-    // Bottom-right grip: the left and top edges are the anchor, so only the
-    // right and bottom move and the window does not walk across the screen as
-    // it is resized.
-    int right = windowResizeRight + (x - windowResizeStartX);
-    int bottom = windowResizeBottom + (y - windowResizeStartY);
-
-    // The same floor XPLMSetWindowResizingLimits enforces for X-Plane's own
-    // edge handles, applied here because we are setting the geometry directly.
-    int minimumWidth = (std::max)(static_cast<int>(config.minimum_width), minimumContentWidth);
-    int minimumHeight = minimumContentHeight + static_cast<int>(chromeBoxels());
-    if (right - windowResizeLeft < minimumWidth) {
-        right = windowResizeLeft + minimumWidth;
-    }
-    if (windowResizeTop - bottom < minimumHeight) {
-        bottom = windowResizeTop - minimumHeight;
-    }
-
-    XPLMSetWindowGeometry(window, windowResizeLeft, windowResizeTop, right, bottom);
-    syncWindowGeometry(true);
-
-    return true;
-}
-
-void App::endWindowResize() {
-    windowResizeActive = false;
-    mouseDown = false;
-}
-
-bool App::isResizingWindow() const {
-    return windowResizeActive;
-}
-
-bool App::isDraggingWindow() const {
-    return windowDragActive;
-}
-
 void App::showBrowser(std::string url) {
     if (!browser || !window) {
         return;
@@ -531,19 +224,18 @@ void App::showBrowser(std::string url) {
         browser->loadUrl(url);
     }
 
-    // The window may already be on screen carrying a toast. Opening the app
-    // takes it over rather than raising a second one.
-    notificationOverlay = false;
-
     if (!visible) {
         browser->visibilityWillChange(true);
         visible = true;
         XPLMSetWindowIsVisible(window, 1);
         applyWindowMode();
-        syncWindowGeometry();
     }
 
     XPLMBringWindowToFront(window);
+    // Keep a toast that is already up on top of the window just raised.
+    if (notificationOverlay && overlayWindow) {
+        XPLMBringWindowToFront(overlayWindow);
+    }
 }
 
 void App::hideBrowser() {
@@ -553,17 +245,9 @@ void App::hideBrowser() {
 
     browser->visibilityWillChange(false);
     visible = false;
-    browser->setFocus(false);
-    XPLMTakeKeyboardFocus(0);
 
     if (window) {
         XPLMSetWindowIsVisible(window, 0);
-    }
-
-    // Closing the app mid-toast should not swallow it. The window comes back
-    // immediately in notification-only mode and the toast finishes its life.
-    if (notification) {
-        setNotificationOverlay(true);
     }
 }
 
@@ -580,25 +264,41 @@ void App::showNotification(Notification *aNotification) {
     notification = aNotification;
 
     // A notification is worth showing whether or not the app is open -- that is
-    // the whole point of a notification. With the browser hidden the window
-    // comes up carrying nothing but the toast.
+    // the whole point of a notification.
     setNotificationOverlay(true);
+    if (!notificationOverlay) {
+        // Nowhere to draw it (VR). Better gone than drawn on the next 2-D frame
+        // long after the moment has passed.
+        clearNotification();
+    }
 }
 
 void App::showNotification(const NotificationOptions& options) {
+    if (!canRaiseNotificationOverlay()) {
+        debug("[%s] Notification (not shown in VR): %s %s\n", name.c_str(), options.title.c_str(), options.body.c_str());
+        return;
+    }
+
     App* previous = App::current;
     App::current = this;
 
+    // The overlay passes every click through to whatever is below it, so
+    // nothing on the toast can be clicked. Drawing a close button there would
+    // offer an affordance that does nothing, and a notification that waits to
+    // be dismissed would then never leave.
     NotificationOptions resolved = options;
-    if (canRaiseNotificationOverlay()) {
-        // Over a hidden browser the window passes every click through to the
-        // simulator, so nothing on the toast can be clicked. Drawing a close
-        // button there would offer an affordance that does nothing, and a
-        // notification that waits to be dismissed would then never leave.
-        resolved.dismissible = false;
-        if (resolved.timeoutSeconds <= 0.0f) {
-            resolved.timeoutSeconds = Notification::defaultOptions().timeoutSeconds;
-        }
+    resolved.dismissible = false;
+    if (resolved.timeoutSeconds <= 0.0f) {
+        resolved.timeoutSeconds = Notification::defaultOptions().timeoutSeconds;
+    }
+
+    // The toast lays itself out against the viewport, so it needs the overlay's
+    // geometry before it is built.
+    syncOverlayGeometry();
+    if (overlayWindow) {
+        int left, top, right, bottom;
+        XPLMGetWindowGeometry(window, &left, &top, &right, &bottom);
+        setViewport(left, bottom, static_cast<unsigned short>((std::max)(1, right - left)), static_cast<unsigned short>((std::max)(1, top - bottom)));
     }
 
     showNotification(new Notification(resolved));
@@ -626,13 +326,6 @@ void App::clearNotification() {
     setNotificationOverlay(false);
 }
 
-// setNotificationOverlay puts the X-Plane window on screen without opening the
-// app, or takes it away again.
-//
-// `visible` keeps its meaning throughout: it is whether the browser is shown.
-// Every input handler already refuses to act when it is false, so an overlay
-// window is click-through by construction and cannot steal a cockpit click --
-// which is the property that makes showing it at all acceptable.
 void App::setNotificationOverlay(bool active) {
     if (notificationOverlay == active) {
         return;
@@ -644,17 +337,17 @@ void App::setNotificationOverlay(bool active) {
 
     notificationOverlay = active;
 
-    if (!window) {
+    if (!overlayWindow) {
         return;
     }
 
     if (active) {
-        XPLMSetWindowIsVisible(window, 1);
-        XPLMBringWindowToFront(window);
-        syncWindowGeometry(false);
+        syncOverlayGeometry();
+        XPLMSetWindowIsVisible(overlayWindow, 1);
+        XPLMBringWindowToFront(overlayWindow);
     }
-    else if (!visible) {
-        XPLMSetWindowIsVisible(window, 0);
+    else {
+        XPLMSetWindowIsVisible(overlayWindow, 0);
     }
 }
 
@@ -662,14 +355,12 @@ bool App::hasNotificationOverlay() const {
     return notificationOverlay;
 }
 
-// A notification can bring its own window only if the app draws its own chrome.
-// Decoration is fixed when the window is created, so a titled app cannot drop
-// its frame for one toast -- showing its window would put an empty X-Plane
-// panel on screen with a notification inside it. Those apps keep the older
-// behaviour, where notifications appear while the app is open, rather than
-// getting a worse-looking version of the new one.
 bool App::canRaiseNotificationOverlay() const {
-    return !visible && config.window_titleless;
+    if (!window || !overlayWindow) {
+        return false;
+    }
+
+    return Dataref::getInstance()->getCached<int>("sim/graphics/VR/enabled") == 0;
 }
 
 NotificationOptions App::defaultNotificationOptions() const {
@@ -701,72 +392,20 @@ void App::postMessageToJS(const std::string& channel, const std::string& payload
     }
 }
 
-float App::titleBarBoxels() const {
-    return config.window_titleless ? titleBarHeight : 0.0f;
-}
-
-float App::footerBoxels() const {
-    return config.window_titleless ? resizeFooterHeight : 0.0f;
-}
-
-float App::chromeBoxels() const {
-    return titleBarBoxels() + footerBoxels();
-}
-
-float App::pageBottomRatio() const {
-    if (viewport.height == 0) {
-        return 0.0f;
-    }
-
-    return footerBoxels() / viewport.height;
-}
-
-float App::pageTopRatio() const {
-    if (viewport.height == 0) {
-        return 1.0f;
-    }
-
-    return 1.0f - (titleBarBoxels() / viewport.height);
-}
-
-bool App::setViewport(int x, int y, unsigned short width, unsigned short height) {
-    unsigned short safeWidth = (std::max<unsigned short>)(1, width);
-    unsigned short safeHeight = (std::max<unsigned short>)(1, height);
-    float multiplier = safeWidth < config.minimum_width ? static_cast<float>(config.minimum_width) / safeWidth : 1.0f;
-    unsigned short browserWidth = static_cast<unsigned short>(std::ceil(safeWidth * multiplier));
-    // The page gets the window less the chrome. registerWindow grows the window
-    // by the same amount, so a manifest asking for 1024x768 rasterises 1024x768
-    // of page rather than 768 minus whatever we drew on top of it.
-    unsigned short chrome = static_cast<unsigned short>(chromeBoxels());
-    unsigned short contentHeight = safeHeight > chrome ? static_cast<unsigned short>(safeHeight - chrome) : 1;
-    unsigned short browserHeight = static_cast<unsigned short>((std::max)(1.0f, std::ceil(contentHeight * multiplier)));
-    unsigned short textureWidth = nextPowerOfTwo(browserWidth);
-    unsigned short textureHeight = nextPowerOfTwo(browserHeight);
-
-    bool changed = viewport.x != x ||
-        viewport.y != y ||
-        viewport.width != safeWidth ||
-        viewport.height != safeHeight ||
-        viewport.textureWidth != textureWidth ||
-        viewport.textureHeight != textureHeight ||
-        viewport.browserWidth != browserWidth ||
-        viewport.browserHeight != browserHeight;
-
+void App::setViewport(int x, int y, unsigned short width, unsigned short height) {
     viewport = {
         x,
         y,
-        safeWidth,
-        safeHeight,
-        textureWidth,
-        textureHeight,
-        browserWidth,
-        browserHeight
+        (std::max<unsigned short>)(1, width),
+        (std::max<unsigned short>)(1, height)
     };
-
-    return changed;
 }
 
 void App::registerWindow() {
+    if (overlayWindow) {
+        XPLMDestroyWindow(overlayWindow);
+        overlayWindow = nullptr;
+    }
     if (window) {
         XPLMDestroyWindow(window);
         window = nullptr;
@@ -778,12 +417,12 @@ void App::registerWindow() {
     float screenWidth = fabs(winLeft - winRight);
     float screenHeight = fabs(winTop - winBot);
     int width = config.width > 0 ? config.width : defaultWindowWidth;
-    // The manifest asks for a page size, so the window is that plus the chrome.
-    // Reserving the chrome out of the requested height instead would silently
-    // shrink every existing app's page by 44 boxels.
-    int height = (config.height > 0 ? config.height : defaultWindowHeight) + static_cast<int>(chromeBoxels());
+    int height = config.height > 0 ? config.height : defaultWindowHeight;
 
-    XPLMCreateWindow_t params;
+    // Zero-initialised: from SDK 4.4.0 a NULL callback means "not interested",
+    // and a browser window wants none of the input callbacks -- X-Plane routes
+    // mouse and keyboard to the page itself.
+    XPLMCreateWindow_t params = {};
     params.structSize = sizeof(params);
     params.left = (int)(winLeft + (screenWidth - width) / 2);
     params.right = params.left + width;
@@ -791,204 +430,77 @@ void App::registerWindow() {
     params.bottom = params.top - height;
     params.visible = 0;
     params.refcon = this;
-    params.drawWindowFunc = [](XPLMWindowID inWindowID, void *inRefcon) {
-        App *app = static_cast<App*>(inRefcon);
-        app->draw();
-    };
-    params.handleMouseClickFunc = [](XPLMWindowID inWindowID, int x, int y, XPLMMouseStatus status, void* inRefcon) -> int {
-        App *app = static_cast<App*>(inRefcon);
-        App::current = app;
-
-        if (!app->visible) {
-            App::current = nullptr;
-            return 0;
-        }
-
-        if (app->isDraggingWindow()) {
-            if (status == xplm_MouseDrag) {
-                app->dragWindow(x, y);
-            }
-            else if (status == xplm_MouseUp) {
-                app->endWindowDrag();
-            }
-            App::current = nullptr;
-            return 1;
-        }
-
-        if (app->isResizingWindow()) {
-            if (status == xplm_MouseDrag) {
-                app->resizeWindow(x, y);
-            }
-            else if (status == xplm_MouseUp) {
-                app->endWindowResize();
-            }
-            App::current = nullptr;
-            return 1;
-        }
-
-        float mouseX, mouseY;
-        if (!app->normalizeWindowPoint(x, y, &mouseX, &mouseY)) {
-            if (app->browser->hasInputFocus()) {
-                app->browser->setFocus(false);
-            }
-            App::current = nullptr;
-            return 0;
-        }
-
-        if (status == xplm_MouseDown && app->updateButtons(mouseX, mouseY, kButtonClick)) {
-            App::current = nullptr;
-            return 1;
-        }
-
-        // Before the drag test: the grip sits in the footer and the title bar
-        // owns the drag, so the two never overlap, but ordering it this way
-        // keeps that true if either region ever grows.
-        if (status == xplm_MouseDown && app->beginWindowResize(mouseX, mouseY, x, y)) {
-            App::current = nullptr;
-            return 1;
-        }
-
-        if (status == xplm_MouseDown && app->beginWindowDrag(mouseX, mouseY, x, y)) {
-            App::current = nullptr;
-            return 1;
-        }
-
-        if (status == xplm_MouseDown) {
-            app->mouseDown = true;
-        }
-        else if (status == xplm_MouseUp) {
-            app->mouseDown = false;
-        }
-
-        if (app->browser->click(status, mouseX, mouseY)) {
-            App::current = nullptr;
-            return 1;
-        }
-
-        app->mouseDown = false;
-        app->browser->setFocus(false);
-        App::current = nullptr;
-        return 0;
-    };
-    params.handleRightClickFunc = nullptr;
-    params.handleMouseWheelFunc = [](XPLMWindowID inWindowID, int x, int y, int wheel, int clicks, void* inRefcon) -> int {
-        App *app = static_cast<App*>(inRefcon);
-        App::current = app;
-
-        if (!app->visible) {
-            App::current = nullptr;
-            return 0;
-        }
-
-        float mouseX, mouseY;
-        if (!app->normalizeWindowPoint(x, y, &mouseX, &mouseY)) {
-            App::current = nullptr;
-            return 0;
-        }
-
-        bool horizontal = wheel == 1;
-        app->browser->scroll(mouseX, mouseY, clicks * app->config.scroll_speed, horizontal);
-        App::current = nullptr;
-        return 1;
-    };
-    params.handleKeyFunc = [](XPLMWindowID inWindowID, char key, XPLMKeyFlags flags, char virtualKey, void* inRefcon, int losingFocus) {
-        App *app = static_cast<App*>(inRefcon);
-        App::current = app;
-
-        if (!app->visible) {
-            App::current = nullptr;
-            return;
-        }
-
-        if ((flags & xplm_DownFlag) == xplm_DownFlag) {
-            app->browser->key(key, virtualKey, flags);
-        }
-
-        if ((flags & xplm_UpFlag) == xplm_UpFlag) {
-            app->browser->key(key, virtualKey, flags);
-        }
-
-        if (losingFocus) {
-            app->browser->setFocus(false);
-        }
-
-        App::current = nullptr;
-    };
-    params.handleCursorFunc = [](XPLMWindowID inWindowID, int x, int y, void* inRefcon) -> XPLMCursorStatus {
-        App *app = static_cast<App*>(inRefcon);
-        App::current = app;
-
-        // The other input handlers already stand down when the browser is
-        // hidden; this one did not need to, because a hidden app had no window
-        // for the simulator to route the cursor to. A notification-only window
-        // does, and without this the pointer would drive a page nobody can see
-        // and pick up hover cursors over empty cockpit.
-        if (!app->visible) {
-            app->activeCursor = CursorDefault;
-            App::current = nullptr;
-            return xplm_CursorDefault;
-        }
-
-        float mouseX, mouseY;
-        if (!app->normalizeWindowPoint(x, y, &mouseX, &mouseY)) {
-            app->activeCursor = CursorDefault;
-            App::current = nullptr;
-            return xplm_CursorDefault;
-        }
-
-        if (!app->mouseDown) {
-            app->browser->mouseMove(mouseX, mouseY);
-        }
-
-        bool isVREnabled = Dataref::getInstance()->getCached<int>("sim/graphics/VR/enabled");
-        if (isVREnabled) {
-            App::current = nullptr;
-            return xplm_CursorDefault;
-        }
-
-        CursorType wantedCursor = CursorDefault;
-        if (app->isResizeGripRegion(mouseX, mouseY)) {
-            wantedCursor = CursorResize;
-        }
-        else if (app->updateButtons(mouseX, mouseY, kButtonHover)) {
-            wantedCursor = CursorHand;
-        }
-        else if (app->visible && app->browser->cursor() != CursorDefault) {
-            wantedCursor = app->browser->cursor();
-        }
-
-        if (wantedCursor == CursorDefault) {
-            app->activeCursor = CursorDefault;
-            App::current = nullptr;
-            return xplm_CursorDefault;
-        }
-
-        if (wantedCursor != app->activeCursor) {
-            app->activeCursor = wantedCursor;
-            setCursor(wantedCursor);
-        }
-
-        App::current = nullptr;
-        return xplm_CursorCustom;
-    };
     params.layer = xplm_WindowLayerFloatingWindows;
-    params.decorateAsFloatingWindow = config.window_titleless ? xplm_WindowDecorationSelfDecoratedResizable : xplm_WindowDecorationRoundRectangle;
+    params.decorateAsFloatingWindow = xplm_WindowDecorationRoundRectangle;
+    params.contentType = xplm_WindowContentTypeBrowser;
+    params.browserLoadFinishedFunc = [](XPLMWindowID inWindow, const char *inURL, void *inRefcon) {
+        App *app = static_cast<App*>(inRefcon);
+        App *previous = App::current;
+        App::current = app;
+        if (app->browser) {
+            app->browser->onLoadFinished(inURL ? inURL : "");
+        }
+        App::current = previous;
+    };
+    params.browserLoadErrorFunc = [](XPLMWindowID inWindow, const char *inURL, const char *inError, void *inRefcon) {
+        App *app = static_cast<App*>(inRefcon);
+        App *previous = App::current;
+        App::current = app;
+        if (app->browser) {
+            app->browser->onLoadError(inURL ? inURL : "", inError ? inError : "");
+        }
+        App::current = previous;
+    };
 
     window = XPLMCreateWindowEx(&params);
-    if (!config.window_titleless) {
-        XPLMSetWindowTitle(window, name.c_str());
+    if (!window) {
+        debug("Could not create the browser window for app '%s'. X-Plane 12.4.4 or newer is required.\n", id.c_str());
+        return;
     }
-    // The floor is a *page* floor, so it moves with the chrome: 480 of window
-    // would otherwise mean 436 of page once the bars are taken out.
+
+    XPLMSetWindowTitle(window, name.c_str());
     XPLMSetWindowResizingLimits(
         window,
-        minimumContentWidth,
-        minimumContentHeight + static_cast<int>(chromeBoxels()),
+        (std::max)(static_cast<int>(config.minimum_width), minimumContentWidth),
+        minimumContentHeight,
         4096,
         4096);
-    syncWindowGeometry(false);
+
+    browser->attach(window);
+    registerOverlayWindow();
     applyWindowMode();
     XPLMSetWindowIsVisible(window, 0);
+}
+
+void App::registerOverlayWindow() {
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(window, &left, &top, &right, &bottom);
+
+    // No decoration and no click handlers, so every click falls through to the
+    // browser window or the cockpit below it. The growl layer keeps it above
+    // floating windows, the browser window included.
+    XPLMCreateWindow_t params = {};
+    params.structSize = sizeof(params);
+    params.left = left;
+    params.top = top;
+    params.right = right;
+    params.bottom = bottom;
+    params.visible = 0;
+    params.refcon = this;
+    params.drawWindowFunc = [](XPLMWindowID inWindowID, void *inRefcon) {
+        static_cast<App*>(inRefcon)->draw();
+    };
+    params.layer = xplm_WindowLayerGrowlNotifications;
+    params.decorateAsFloatingWindow = xplm_WindowDecorationNone;
+    params.contentType = xplm_WindowContentTypeOpenGL;
+
+    overlayWindow = XPLMCreateWindowEx(&params);
+    if (!overlayWindow) {
+        debug("Could not create the notification overlay for app '%s'.\n", id.c_str());
+        return;
+    }
+
+    XPLMSetWindowIsVisible(overlayWindow, 0);
 }
 
 AppConfiguration App::defaultConfig() {

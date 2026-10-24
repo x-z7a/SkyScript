@@ -14,8 +14,7 @@ void skyscript_initialize(void);
 
 Call from `XPluginStart`. Sets up:
 - Plugin paths
-- Mouse cursor resources
-- Flight loop callback (handles app updates, keyboard focus sync)
+- Flight loop callback (handles app updates, notifications and plugin-to-JS messages)
 - VR mode monitoring (auto-switches windows between desktop and VR)
 
 ### `skyscript_set_assets_path()`
@@ -50,7 +49,7 @@ The `assets/` directory is included in the SkyScript library distribution zip. C
 void skyscript_shutdown(void);
 ```
 
-Call from `XPluginStop`. Unregisters the flight loop, destroys all app windows, and frees cursor resources.
+Call from `XPluginStop`. Unregisters the flight loop, and destroys all app windows.
 
 ## App Discovery
 
@@ -98,14 +97,14 @@ Create a browser window manually (outside of `skyscript_load_apps_from_directory
 SkyScriptAppConfig skyscript_default_config(void);
 ```
 
-Returns a default-initialized `SkyScriptAppConfig` struct. Start from this rather than zero-initializing: a zeroed struct reads as "titled window, silent notifications, zero timeout", which are choices rather than defaults.
+Returns a default-initialized `SkyScriptAppConfig` struct. Start from this rather than zero-initializing: a zeroed struct reads as "silent notifications, zero timeout", which are choices rather than defaults.
 
-Besides the browser settings, the struct carries the window's chrome and the defaults for notifications raised on it:
+`audio_muted`, `scroll_speed`, `forced_language`, `framerate`, `window_titleless` and `window_opacity` are kept so the struct's layout does not change, but have no effect: X-Plane owns the browser and the window chrome. See [Removed options](./manifest.md#removed-options).
+
+Besides the browser settings, the struct carries the defaults for notifications raised on the window:
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `window_titleless` | `1` | Draw the app's own chrome — a translucent background and a top drag strip — instead of an X-Plane title bar. Required for [notifications with the app closed](#notifications-with-the-app-closed). |
-| `window_opacity` | `0.96` | Window background opacity. `0` means the default. |
 | `notification_corner` | `SKYSCRIPT_NOTIFICATION_TOP_RIGHT` | Corner notifications slide from. |
 | `notification_timeout` | `5` | Seconds before auto-dismiss. `0` keeps notifications up until dismissed. |
 | `notification_opacity` | `0.78` | Panel opacity. `0` means the default. |
@@ -206,12 +205,12 @@ SkyScript exposes native toast notifications for app windows. A notification sli
 
 ### Notifications with the app closed
 
-A notification is shown whether or not its app window is open. With the app closed, SkyScript puts the window on screen carrying the notification and nothing else — no window background and no page — and takes it away again when the notification finishes.
+A notification is shown whether or not its app window is open. X-Plane draws browser windows itself and ignores drawing callbacks on them, so SkyScript draws notifications in a second window of its own: transparent, undecorated, and laid exactly over the app window (or where the app window would be, when it is closed).
 
 Two consequences worth knowing before you rely on it:
 
-- **The toast is presentation only in this state.** The window passes every mouse click, scroll and keypress straight through to the simulator, so it can never steal a cockpit click. Because nothing on it can be clicked, `dismissible` is forced off and a `timeout_seconds` of `0` is replaced with the default — otherwise the notification would wait forever for a dismissal that cannot arrive.
-- **It requires a self-decorated window** (`window_titleless`, the default since v0.9.0). Decoration is fixed when a window is created, so a titled app cannot drop its frame for one toast; showing its window would put an empty X-Plane panel on screen with a notification inside it. Titled apps keep the earlier behaviour, where notifications appear while the app is open.
+- **The toast is presentation only.** The overlay window has no input handlers, so every mouse click, scroll and keypress falls through to the page or the simulator below it, and it can never steal a cockpit click. Because nothing on it can be clicked, `dismissible` is forced off and a `timeout_seconds` of `0` is replaced with the default — otherwise the notification would wait forever for a dismissal that cannot arrive.
+- **It is not shown in VR.** The overlay follows the app window's desktop geometry, which a VR window does not have. In VR, notifications are written to `Log.txt` instead.
 
 The toast is positioned in the configured corner of the app's window, which is where it appears whether the app is open or closed.
 
@@ -322,7 +321,8 @@ void skyscript_app_post_message(SkyScriptApp app, const char* channel, const cha
 Push a message from the plugin to JavaScript. All JS listeners registered via `window.skyscript.onMessage(channel, callback)` will be called with the parsed payload.
 
 **Threading:** safe to call from any thread. The message is queued and delivered
-on the next flight loop, so a worker thread never touches CEF directly.
+on the next flight loop through `XPLMWindowInjectScript`, so a worker thread
+never touches the browser directly.
 
 **Payload:** must be a JSON document. It is parsed in the page with
 `JSON.parse`, not evaluated. A payload that is not valid JSON is dropped with a
@@ -360,7 +360,6 @@ SkyScript automatically registers these X-Plane datarefs and commands:
 | `skyscript/toggle` | Command | Show/hide the last active app |
 | `skyscript/app-{id}/toggle` | Command | Show/hide a specific app |
 | `skyscript/app-{id}/refresh` | Command | Reload the page |
-| `skyscript/app-{id}/devtools` | Command | Toggle Chrome DevTools window for debugging |
 | `skyscript/app-{id}/visible` | Dataref (int) | `1` when visible |
 | `skyscript/app-{id}/url` | Dataref (string) | Current URL (writable) |
 

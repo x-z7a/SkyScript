@@ -1,97 +1,28 @@
 #include "browser.h"
 
 #include "app.h"
-#include "browser_handler.h"
 #include "config.h"
 #include "dataref.h"
-#include "drawing.h"
-#include "notification.h"
-#include "path.h"
+#include "json.hpp"
 #include "xplm_bridge.h"
 
-#include <algorithm>
 #include <cctype>
-#include <chrono>
-#include <cmath>
-#include <cstddef>
 #include <filesystem>
 #include <iomanip>
-#include <include/base/cef_bind.h>
-#include <include/base/cef_callback.h>
-#include <include/cef_app.h>
-#include <include/cef_base.h>
-#include <include/cef_browser.h>
-#include <include/cef_client.h>
-#include <include/cef_command_line.h>
-#include <include/cef_parser.h>
-#include <include/cef_render_handler.h>
-#include <include/cef_request_context_handler.h>
-#include <include/cef_scheme.h>
-#include <include/cef_stream.h>
-#include <include/cef_version.h>
-#include <include/wrapper/cef_closure_task.h>
-#include <include/wrapper/cef_helpers.h>
-#include <include/wrapper/cef_stream_resource_handler.h>
 #include <limits>
 #include <sstream>
 #include <string>
-#include <vector>
 #include <XPLMDisplay.h>
-#include <XPLMGraphics.h>
 #include <XPLMProcessing.h>
 #include <XPLMUtilities.h>
 
-#ifndef SKYSCRIPT_PLUGIN_LOCAL_CEF
-#define SKYSCRIPT_PLUGIN_LOCAL_CEF 0
-#endif
-
-#if APL
-#include "unix_keycodes.h"
-
-#include <include/wrapper/cef_library_loader.h>
-#elif LIN
-#include "unix_keycodes.h"
-#endif
-
 namespace {
-
-constexpr const char* kLocalAppDomainSuffix = ".skyscript.local";
-
-std::string cefStringPart(const cef_string_t& value) {
-    return CefString(&value).ToString();
-}
-
-std::string sanitizeHostLabel(const std::string& value) {
-    std::string label;
-    for (char c : value) {
-        unsigned char uc = static_cast<unsigned char>(c);
-        if (std::isalnum(uc)) {
-            label.push_back(static_cast<char>(std::tolower(uc)));
-        } else if (c == '-') {
-            label.push_back(c);
-        } else if (!label.empty() && label.back() != '-') {
-            label.push_back('-');
-        }
-    }
-
-    while (!label.empty() && label.front() == '-') {
-        label.erase(label.begin());
-    }
-    while (!label.empty() && label.back() == '-') {
-        label.pop_back();
-    }
-    return label.empty() ? "app" : label;
-}
-
-std::string localAppHostForId(const std::string& appId) {
-    return sanitizeHostLabel(appId) + kLocalAppDomainSuffix;
-}
 
 std::string percentEncodePath(const std::string& path) {
     std::ostringstream encoded;
     encoded << std::uppercase << std::hex;
     for (unsigned char c : path) {
-        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~' || c == '/') {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~' || c == '/' || c == ':') {
             encoded << static_cast<char>(c);
             continue;
         }
@@ -100,263 +31,216 @@ std::string percentEncodePath(const std::string& path) {
     return encoded.str();
 }
 
-bool hasParentTraversal(const std::filesystem::path& path) {
-    for (const auto& part : path) {
-        if (part == "..") {
-            return true;
-        }
-    }
-    return false;
+// A JSON string literal is a valid JavaScript one, and dump() takes care of
+// every escape -- quotes, backslashes, control characters, invalid UTF-8.
+std::string jsStringLiteral(const std::string& value) {
+    return nlohmann::json(value).dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
-bool isWithinRoot(const std::filesystem::path& candidate, const std::filesystem::path& root) {
-    std::error_code ec;
-    std::filesystem::path relative = std::filesystem::relative(candidate, root, ec);
-    return !ec && !hasParentTraversal(relative);
+// Spoofs the parts of navigator that embedded sites check before they will
+// work offline-of-a-real-browser: a desktop user agent, onLine, permissions
+// and geolocation. Geolocation is fed by updateGPSLocation with the aircraft's
+// position, so moving-map sites follow the airplane.
+std::string navigatorOverrideScript(const std::string& userAgent) {
+    return
+        "(function(){"
+        "function setUserAgent(window, userAgent) {"
+        "    try {"
+        "        var userAgentProp = Object.getOwnPropertyDescriptor(navigator, 'userAgent');"
+        "        if (userAgentProp && userAgentProp.configurable) {"
+        "            Object.defineProperty(navigator, 'userAgent', {"
+        "                get: function () { return userAgent; },"
+        "                configurable: true"
+        "            });"
+        "        } else if (navigator.__defineGetter__) {"
+        "            navigator.__defineGetter__('userAgent', function () {"
+        "                return userAgent;"
+        "            });"
+        "        }"
+        "    } catch (e) {}"
+        "}"
+        "window.skyscript_watchers = (window.skyscript_watchers || {});"
+        "Object.defineProperty(navigator, 'onLine', {"
+        "    get: function() { return true; },"
+        "    configurable: true"
+        "});"
+        "navigator.permissions.query = (options) => {"
+        "    return Promise.resolve({ state: 'granted' });"
+        "};"
+        "navigator.geolocation.watchPosition = (success, error, options) => {"
+        "    window.skyscript_watchers = (window.skyscript_watchers || {});"
+        "    const id = Math.round(Date.now() / 1000);"
+        "    window.skyscript_watchers[id] = success;"
+        "    if (window.skyscript_location) { success(window.skyscript_location); }"
+        "    return id;"
+        "};"
+        "navigator.geolocation.clearWatch = (id) => {"
+        "    if (!window.skyscript_watchers) { return; }"
+        "    delete window.skyscript_watchers[id];"
+        "};"
+        "navigator.geolocation.getCurrentPosition = (success, error, options) => {"
+        "    if (window.skyscript_location) {"
+        "        success(window.skyscript_location);"
+        "    } else {"
+        "        navigator.geolocation.watchPosition(success, error, options);"
+        "    }"
+        "};"
+        "setUserAgent(window, " + jsStringLiteral(userAgent) + ");"
+        "window.dispatchEvent(new Event('load'));"
+        "})();";
 }
 
-char shortcutLetter(unsigned char key, unsigned char virtualKey) {
-    if (virtualKey >= 'A' && virtualKey <= 'Z') {
-        return static_cast<char>(std::tolower(virtualKey));
-    }
-    if (virtualKey >= 'a' && virtualKey <= 'z') {
-        return static_cast<char>(virtualKey);
-    }
-    if (std::isalpha(key)) {
-        return static_cast<char>(std::tolower(key));
-    }
+// The address bar for apps that browse the open web. It is part of the page
+// rather than chrome we draw, because a browser window draws itself.
+const char* addressBarScript() {
+    return R"(
+        (function() {
+            if (!document.body || document.getElementById('cefToolbar')) {
+                return;
+            }
 
-    switch (key) {
-        case 1:
-            return 'a';
-        case 3:
-            return 'c';
-        case 22:
-            return 'v';
-        default:
-            return '\0';
-    }
-}
+            const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const chevron = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9.971 13.623"><path fill-opacity=".85" fill="#007AFF" d="M0 6.807c0 .214.088.41.244.576l6.035 5.996a.773.773 0 0 0 .576.234.78.78 0 0 0 .801-.8.83.83 0 0 0-.234-.577l-5.45-5.43 5.45-5.43a.847.847 0 0 0 .234-.575.78.78 0 0 0-.8-.801.773.773 0 0 0-.577.234L.244 6.23A.831.831 0 0 0 0 6.807Z"/></svg>');
+            const refresh = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13.994 18.271"><path fill-opacity=".85" fill="#999999" d="M0 9.717a6.816 6.816 0 1 0 13.633 0c0-.44-.303-.742-.733-.742-.41 0-.673.302-.673.732 0 2.988-2.422 5.4-5.41 5.4a5.401 5.401 0 0 1-5.41-5.4 5.41 5.41 0 0 1 5.41-5.41c.507 0 .966.02 1.376.107l-2.07 2.032a.663.663 0 0 0-.195.488c0 .4.302.703.683.703.225 0 .381-.078.508-.195l3.086-3.086a.685.685 0 0 0 .205-.508.719.719 0 0 0-.205-.498L7.12.215A.647.647 0 0 0 6.611 0c-.38 0-.683.322-.683.723 0 .185.068.361.185.498L7.91 2.998A5.769 5.769 0 0 0 6.816 2.9 6.81 6.81 0 0 0 0 9.717Z"/></svg>');
 
-CefRefPtr<CefFrame> focusedOrMainFrame(CefRefPtr<CefBrowser> browser) {
-    CefRefPtr<CefFrame> frame = browser->GetFocusedFrame();
-    return frame ? frame : browser->GetMainFrame();
-}
+            // Create container
+            const toolbar = document.createElement('div');
+            toolbar.id = 'cefToolbar';
+            toolbar.style.position = 'fixed';
+            toolbar.style.top = '0';
+            toolbar.style.left = '0';
+            toolbar.style.width = '100%';
+            toolbar.style.zIndex = '9999';
+            toolbar.style.padding = '4px';
+            toolbar.style.backgroundColor = isDarkMode ? '#1A1A1A' : '#EEE';
+            toolbar.style.boxSizing = 'border-box';
+            toolbar.style.display = 'flex';
+            toolbar.style.alignItems = 'center';
+            toolbar.style.gap = '8px';
 
-cef_uri_unescape_rule_t pathUnescapeRules() {
-    return static_cast<cef_uri_unescape_rule_t>(UU_NORMAL | UU_SPACES | UU_PATH_SEPARATORS);
-}
+            // Back button
+            const backBtn = document.createElement('button');
+            backBtn.id = "cefBack";
+            backBtn.style.background = `url(${chevron}) no-repeat center / contain`;
+            backBtn.style.cursor = 'pointer';
+            backBtn.style.width = '14px';
+            backBtn.style.height = '14px';
+            backBtn.style.outline = 'none';
+            backBtn.style.border = 'none';
+            backBtn.onclick = function() {
+                window.history.back();
+            };
 
-std::string mimeTypeForPath(const std::filesystem::path& path) {
-    std::string extension = path.extension().string();
-    if (!extension.empty() && extension.front() == '.') {
-        extension.erase(extension.begin());
-    }
+            // Forward button
+            const fwdBtn = document.createElement('button');
+            fwdBtn.id = "cefForward";
+            fwdBtn.style.cssText = backBtn.style.cssText;
+            fwdBtn.style.transform = 'scaleX(-1)';
+            fwdBtn.onclick = function() {
+                window.history.forward();
+            };
 
-    std::string mimeType = CefGetMimeType(extension).ToString();
-    if (mimeType.empty()) {
-        mimeType = "application/octet-stream";
-    }
-    return mimeType;
-}
+            // Address bar
+            const addressBar = document.createElement('input');
+            addressBar.type = 'text';
+            addressBar.id = 'cefAddressBar';
+            addressBar.value = window.location.href;
+            addressBar.style.flex = '1';
+            addressBar.style.fontSize = '12px';
+            addressBar.style.border = 'none';
+            addressBar.style.outline = 'none';
+            addressBar.style.height = '20px';
+            addressBar.style.color = isDarkMode ? '#D2D2D2' : '#1A1A1A';
+            addressBar.style.backgroundColor = isDarkMode ? '#000000' : '#D2D2D2';
+            addressBar.style.padding = '2px 8px';
+            addressBar.style.borderRadius = '12px';
 
-CefRefPtr<CefResourceHandler> localTextResource(int statusCode, const std::string& statusText, const char* body) {
-    CefResponse::HeaderMap headers;
-    headers.insert(std::make_pair("Access-Control-Allow-Origin", "*"));
+            const observer = new MutationObserver(() => {
+                if (document.activeElement !== addressBar) {
+                    addressBar.value = window.location.href;
+                }
+            });
+            observer.observe(document, { subtree: true, childList: true });
 
-    CefRefPtr<CefStreamReader> stream = CefStreamReader::CreateForData(
-        const_cast<char*>(body),
-        std::char_traits<char>::length(body));
-    return CefRefPtr<CefResourceHandler>(new CefStreamResourceHandler(statusCode, statusText, "text/plain", headers, stream));
-}
+            window.addEventListener("popstate", () => {
+                addressBar.value = window.location.href;
+            });
 
-bool parseFileUrl(const std::string& url, std::filesystem::path* filePath, std::string* query, std::string* fragment) {
-    CefURLParts parts;
-    if (!CefParseURL(url, parts)) {
-        return false;
-    }
-    if (cefStringPart(parts.scheme) != "file") {
-        return false;
-    }
+            addressBar.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    if (!addressBar.value.startsWith('http')) {
+                        addressBar.value = "https://" + addressBar.value;
+                    }
 
-    std::string path = CefURIDecode(cefStringPart(parts.path), true, pathUnescapeRules()).ToString();
-#if IBM
-    if (path.size() >= 3 && path[0] == '/' && std::isalpha(static_cast<unsigned char>(path[1])) && path[2] == ':') {
-        path.erase(path.begin());
-    }
-#endif
+                    window.location.href = addressBar.value;
+                }
+            });
 
-    if (path.empty()) {
-        return false;
-    }
+            addressBar.addEventListener('blur', function(e) {
+                if (addressBar.value === '') {
+                    addressBar.value = window.location.href;
+                }
+            });
 
-    *filePath = std::filesystem::path(path);
-    *query = cefStringPart(parts.query);
-    *fragment = cefStringPart(parts.fragment);
-    return true;
-}
+            // Clear input button
+            const clearInputButton = document.createElement('button');
+            clearInputButton.textContent = String.fromCharCode(10005);
+            clearInputButton.style.cursor = 'pointer';
+            clearInputButton.style.color = isDarkMode ? '#D2D2D2' : '#1A1A1A';
+            clearInputButton.style.backgroundColor = 'transparent';
+            clearInputButton.style.fontSize = '12px';
+            clearInputButton.style.width = '14px';
+            clearInputButton.style.height = '14px';
+            clearInputButton.style.outline = 'none';
+            clearInputButton.style.border = 'none';
+            clearInputButton.style.position = 'absolute';
+            clearInputButton.style.right = '32px';
+            clearInputButton.style.zIndex = '9';
+            clearInputButton.onclick = function() {
+                addressBar.value = '';
+                addressBar.focus();
+            };
 
-std::string localUrlForFile(const std::filesystem::path& filePath, const std::filesystem::path& root, const std::string& host, const std::string& query, const std::string& fragment) {
-    std::error_code ec;
-    std::filesystem::path canonicalFile = std::filesystem::weakly_canonical(filePath, ec);
-    std::filesystem::path relative;
-    if (!ec) {
-        relative = std::filesystem::relative(canonicalFile, root, ec);
-    }
-    if (ec || relative.empty() || hasParentTraversal(relative)) {
-        relative = filePath.filename();
-    }
+            // Refresh button
+            const refreshButton = document.createElement('button');
+            refreshButton.style.background = `url(${refresh}) no-repeat center / contain`;
+            refreshButton.style.cursor = 'pointer';
+            refreshButton.style.width = '14px';
+            refreshButton.style.height = '14px';
+            refreshButton.style.outline = 'none';
+            refreshButton.style.border = 'none';
+            refreshButton.onclick = function() {
+                window.location.reload();
+            };
 
-    std::string url = "https://" + host + "/" + percentEncodePath(relative.generic_string());
-    if (!query.empty()) {
-        url += "?" + query;
-    }
-    if (!fragment.empty()) {
-        url += "#" + fragment;
-    }
-    return url;
-}
+            // Add elements to the toolbar
+            toolbar.appendChild(backBtn);
+            toolbar.appendChild(fwdBtn);
+            toolbar.appendChild(addressBar);
+            toolbar.appendChild(clearInputButton);
+            toolbar.appendChild(refreshButton);
 
-class LocalAppSchemeHandlerFactory : public CefSchemeHandlerFactory {
-public:
-    explicit LocalAppSchemeHandlerFactory(std::filesystem::path root)
-        : root(std::move(root)) {}
+            // Insert toolbar at the very top of <body>
+            document.body.insertBefore(toolbar, document.body.firstChild);
 
-    CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& schemeName, CefRefPtr<CefRequest> request) override {
-        (void)browser;
-        (void)frame;
-        (void)schemeName;
-
-        CefURLParts parts;
-        if (!CefParseURL(request->GetURL(), parts)) {
-            return localTextResource(404, "Not Found", "not found");
-        }
-
-        std::string path = CefURIDecode(cefStringPart(parts.path), true, pathUnescapeRules()).ToString();
-        if (path.empty() || path == "/") {
-            path = "/index.html";
-        }
-        if (!path.empty() && path.front() == '/') {
-            path.erase(path.begin());
-        }
-
-        std::filesystem::path relative(path);
-        if (relative.is_absolute() || hasParentTraversal(relative)) {
-            return localTextResource(404, "Not Found", "not found");
-        }
-
-        std::error_code ec;
-        std::filesystem::path candidate = std::filesystem::weakly_canonical(root / relative, ec);
-        if (ec || !isWithinRoot(candidate, root) || !std::filesystem::is_regular_file(candidate, ec)) {
-            return localTextResource(404, "Not Found", "not found");
-        }
-
-        CefRefPtr<CefStreamReader> stream = CefStreamReader::CreateForFile(candidate.string());
-        if (!stream) {
-            return localTextResource(404, "Not Found", "not found");
-        }
-
-        CefResponse::HeaderMap headers;
-        headers.insert(std::make_pair("Access-Control-Allow-Origin", "*"));
-        return CefRefPtr<CefResourceHandler>(new CefStreamResourceHandler(200, "OK", mimeTypeForPath(candidate), headers, stream));
-    }
-
-private:
-    std::filesystem::path root;
-
-    IMPLEMENT_REFCOUNTING(LocalAppSchemeHandlerFactory);
-};
-
-bool ensureCefRuntimeAvailable() {
-#if APL
-    static bool loaded = false;
-    if (loaded) {
-        return true;
-    }
-
-#if SKYSCRIPT_PLUGIN_LOCAL_CEF
-    const std::string frameworkPath =
-        Path::getInstance()->pluginDirectory +
-        "/mac_x64/Chromium Embedded Framework.framework/Chromium Embedded Framework";
-
-    if (!std::filesystem::exists(frameworkPath)) {
-        debug("Could not find the CEF framework at %s.\n", frameworkPath.c_str());
-        return false;
-    }
-
-    if (!cef_load_library(frameworkPath.c_str())) {
-        debug("Could not load the CEF framework from %s.\n", frameworkPath.c_str());
-        return false;
-    }
-
-#else
-    static CefScopedLibraryLoader libraryLoader;
-    if (!libraryLoader.LoadInMain()) {
-        debug("Could not load the X-Plane CEF framework.\n");
-        return false;
-    }
-#endif
-
-    loaded = true;
-    return true;
-#else
-    // On Windows and Linux, libcef is resolved by the OS loader before CEF
-    // browser initialization. The host-vs-plugin-local choice is controlled
-    // by the package layout and dynamic loader search path.
-    return true;
-#endif
+            // Add some spacing so the page content isn't hidden behind the toolbar
+            document.body.style.marginTop = '40px';
+        })();
+    )";
 }
 
 } // namespace
 
-Browser::Browser() {
-    textureId = 0;
-    offsetStart = 0.0f;
-    offsetEnd = 1.0f;
+Browser::Browser(App *anApp) {
+    app = anApp;
+    window = nullptr;
     lastGpsUpdateTime = 0.0f;
-    backButton = nullptr;
     xplmBridge = new XplmBridge();
-    handler = nullptr;
-    requestContext = nullptr;
     currentUrl = "";
 }
 
 void Browser::initialize() {
-    if (textureId || handler) {
-        return;
-    }
-
-    App *app = App::current;
-
-    offsetStart = app->pageBottomRatio();
-    offsetEnd = app->pageTopRatio();
-
-    std::string icon = app->config.hide_addressbar ? "/icons/arrow-left-circle.svg" : "/icons/x-circle.svg";
-    backButton = new Button(Path::getInstance()->assetsDirectory + icon);
-    // Placed by setPageExtent, which knows where the title bar is. A fixed
-    // ratio would drift off the bar as the window is resized, because the bar
-    // is a fixed number of boxels and the ratio is not.
-    positionBackButton();
-    backButton->setClickHandler([app]() {
-        if (!app->visible) {
-            return false;
-        }
-
-        if (!app->config.hide_addressbar) {
-            app->hideBrowser();
-            return true;
-        }
-
-        bool didGoBack = app->browser->goBack();
-        if (!didGoBack) {
-            app->hideBrowser();
-        }
-
-        return true;
-    });
-
     currentUrl = app->config.homepage;
-    allocateTexture();
 
     std::string datarefPrefix = "skyscript/" + app->id;
     Dataref::getInstance()->createDataref<std::string>((datarefPrefix + "/url").c_str(), &currentUrl, true, [this](std::string newUrl) {
@@ -373,81 +257,35 @@ void Browser::initialize() {
             return;
         }
 
-        if (handler && handler->browserInstance) {
-            handler->browserInstance->Reload();
-        }
+        refresh(false);
     });
-
-    createBrowser();
 }
 
-void Browser::allocateTexture() {
-    if (!textureId) {
-        XPLMGenerateTextureNumbers(&textureId, 1);
+void Browser::attach(XPLMWindowID aWindow) {
+    window = aWindow;
+    if (!window) {
+        return;
     }
 
-    XPLMBindTexture2d(textureId, 0);
+    XPLMWindowAddBrowserFunction(window, XplmBridge::functionName, handleBrowserCall, this);
+    if (xplmBridge) {
+        xplmBridge->setWindow(window);
+    }
 
-    const auto &viewport = App::current->viewport;
-    std::vector<unsigned char> whiteTextureData(
-        viewport.textureWidth * viewport.textureHeight * WindowViewport::bytesPerPixel,
-        0xFF);
-
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGBA,
-        viewport.textureWidth,
-        viewport.textureHeight,
-        0,
-        GL_BGRA,
-        GL_UNSIGNED_BYTE,
-        whiteTextureData.data());
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    if (!currentUrl.empty()) {
+        XPLMWindowSetURL(window, currentUrl.c_str());
+    }
 }
 
 void Browser::destroy() {
-    if (handler) {
-        if (handler->browserInstance) {
-            handler->browserInstance->GetHost()->CloseBrowser(true);
-
-            auto startTime = std::chrono::steady_clock::now() + std::chrono::seconds(99);
-            auto gracePeriod = std::chrono::milliseconds(500);
-            while (1) {
-                CefDoMessageLoopWork();
-
-                if (!handler->browserInstance && startTime > std::chrono::steady_clock::now()) {
-                    startTime = std::chrono::steady_clock::now();
-                } else if (std::chrono::steady_clock::now() - startTime > gracePeriod) {
-                    break;
-                }
-            }
-        }
-
-        handler->destroy();
-        handler = nullptr;
-    }
-    requestContext = nullptr;
-    localAppHost.clear();
-    localAppRoot.clear();
-
-    if (textureId) {
-        XPLMBindTexture2d(textureId, 0);
-        glDeleteTextures(1, (GLuint *) &textureId);
-        textureId = 0;
-    }
-
-    if (backButton) {
-        backButton->destroy();
-        backButton = nullptr;
-    }
-
     if (xplmBridge) {
+        xplmBridge->setWindow(nullptr);
         delete xplmBridge;
         xplmBridge = nullptr;
     }
+
+    // App destroys the window itself; this only forgets it.
+    window = nullptr;
 }
 
 void Browser::visibilityWillChange(bool becomesVisible) {
@@ -455,22 +293,8 @@ void Browser::visibilityWillChange(bool becomesVisible) {
 }
 
 void Browser::update() {
-    if (!textureId) {
-        return;
-    }
-
-    App *app = App::current;
-
-    if (handler) {
-        CefDoMessageLoopWork();
-    }
-
     if (xplmBridge) {
-        xplmBridge->processPendingRequests();
-    }
-
-    if (backButton) {
-        backButton->visible = app->visible;
+        xplmBridge->processPendingPosts();
     }
 
     if (lastGpsUpdateTime > std::numeric_limits<float>::epsilon() && XPLMGetElapsedTime() > lastGpsUpdateTime + 1.0f) {
@@ -478,438 +302,69 @@ void Browser::update() {
     }
 }
 
-void Browser::draw() {
-    if (!textureId) {
-        return;
-    }
-
-    XPLMSetGraphicsState(
-        0,
-        1,
-        0,
-        0,
-        1,
-        0,
-        0);
-
-    XPLMBindTexture2d(textureId, 0);
-
-    const auto &viewport = App::current->viewport;
-    int x1 = viewport.x;
-    int y1 = viewport.y + viewport.height * offsetStart;
-    int x2 = x1 + viewport.width;
-    int y2 = viewport.y + viewport.height * offsetEnd;
-
-    glBegin(GL_QUADS);
-    App* app = App::current;
-    float alpha = app->config.window_titleless ? std::clamp(app->config.window_opacity, 0.2f, 1.0f) : 1.0f;
-    glColor4f(app->brightness, app->brightness, app->brightness, alpha);
-
-    float u = (float)viewport.browserWidth / viewport.textureWidth;
-    float v = (float)viewport.browserHeight / viewport.textureHeight;
-
-    glTexCoord2f(0, v);
-    glVertex2f(x1, y1);
-    glTexCoord2f(0, 0);
-    glVertex2f(x1, y2);
-    glTexCoord2f(u, 0);
-    glVertex2f(x2, y2);
-    glTexCoord2f(u, v);
-    glVertex2f(x2, y1);
-    glEnd();
-
-    if (backButton) {
-        backButton->draw();
+void Browser::loadUrl(const std::string& url) {
+    currentUrl = url;
+    if (window && !currentUrl.empty()) {
+        XPLMWindowSetURL(window, currentUrl.c_str());
     }
 }
 
-void Browser::resize() {
-    if (!textureId) {
-        return;
-    }
-
-    allocateTexture();
-
-    if (!handler) {
-        return;
-    }
-
-    const auto &viewport = App::current->viewport;
-    handler->setViewSize(viewport.browserWidth, viewport.browserHeight);
-    if (handler->browserInstance) {
-        handler->browserInstance->GetHost()->WasResized();
-        handler->browserInstance->GetHost()->Invalidate(PET_VIEW);
+void Browser::refresh(bool ignoreCache) {
+    if (window) {
+        XPLMWindowRefresh(window, ignoreCache ? 1 : 0);
     }
 }
 
-void Browser::setPageExtent(float start, float end) {
-    // A degenerate extent would divide by zero when a window point is mapped
-    // onto the page, so an impossible one is refused rather than stored.
-    if (end <= start) {
-        return;
+void Browser::onLoadFinished(const std::string& url) {
+    if (!url.empty()) {
+        currentUrl = url;
     }
 
-    offsetStart = start;
-    offsetEnd = end;
-    positionBackButton();
+    injectPageScripts();
 }
 
-// Centred in the title bar, near its left edge. The button used to float over
-// the top of the page at a fixed ratio; now that the bar is real chrome the
-// button belongs in it, and follows it when the window is resized.
-void Browser::positionBackButton() {
-    App *app = App::current;
-    if (!backButton || !app || app->viewport.height == 0) {
-        return;
-    }
-
-    float centreY = offsetEnd + (app->titleBarBoxels() * 0.5f) / app->viewport.height;
-    if (app->titleBarBoxels() <= 0.0f) {
-        // X-Plane's own decoration: no bar of ours to sit in, so keep the
-        // historical position floating just inside the top of the page.
-        centreY = offsetEnd - (backButton->relativeHeight / 2.0f);
-    }
-
-    backButton->setPosition(backButton->relativeWidth / 2.0f + 0.01f, centreY);
+void Browser::onLoadError(const std::string& url, const std::string& error) {
+    debug("[%s] Error loading %s: %s\n", app->name.c_str(), url.c_str(), error.empty() ? "unknown error" : error.c_str());
 }
 
-void Browser::mouseMove(float normalizedX, float normalizedY) {
-    if (!textureId || !handler || !handler->browserInstance) {
-        return;
-    }
-
-    if (normalizedX < 0 || normalizedX > 1 || normalizedY < offsetStart || normalizedY > offsetEnd) {
-        return;
-    }
-
-    CefMouseEvent mouseEvent = getMouseEvent(normalizedX, normalizedY);
-    handler->browserInstance->GetHost()->SendMouseMoveEvent(mouseEvent, false);
-}
-
-bool Browser::click(XPLMMouseStatus status, float normalizedX, float normalizedY) {
-    if (!textureId || !handler || !handler->browserInstance) {
-        return false;
-    }
-
-    if (normalizedX < 0 || normalizedX > 1 || normalizedY < offsetStart || normalizedY > offsetEnd) {
-        return false;
-    }
-
-    CefMouseEvent mouseEvent = getMouseEvent(normalizedX, normalizedY);
-    if (mouseEvent.y < 0) {
-        return false;
-    }
-
-    if (status == xplm_MouseDown) {
-        handler->browserInstance->GetHost()->SendMouseClickEvent(mouseEvent, MBT_LEFT, false, 1);
-    } else if (status == xplm_MouseDrag) {
-        mouseEvent.modifiers |= EVENTFLAG_LEFT_MOUSE_BUTTON;
-        handler->browserInstance->GetHost()->SendMouseMoveEvent(mouseEvent, false);
-    } else {
-        handler->browserInstance->GetHost()->SendMouseClickEvent(mouseEvent, MBT_LEFT, true, 1);
-    }
-
-    return true;
-}
-
-void Browser::scroll(float normalizedX, float normalizedY, int clicks, bool horizontal) {
-    if (!textureId || !handler || !handler->browserInstance) {
-        return;
-    }
-
-    if (normalizedX < 0 || normalizedX > 1 || normalizedY < offsetStart || normalizedY > offsetEnd) {
-        return;
-    }
-
-    CefMouseEvent mouseEvent = getMouseEvent(normalizedX, normalizedY);
-    mouseEvent.modifiers = EVENTFLAG_NONE;
-    handler->browserInstance->GetHost()->SendMouseWheelEvent(mouseEvent, horizontal ? clicks : 0, horizontal ? 0 : clicks);
-}
-
-void Browser::loadUrl(std::string url) {
-    if (!textureId || !handler) {
-        currentUrl = prepareUrlForLoad(url);
-        return;
-    }
-
-    currentUrl = prepareUrlForLoad(url);
-    if (handler->browserInstance) {
-        handler->browserInstance->GetMainFrame()->LoadURL(currentUrl);
+void Browser::injectScript(const std::string& script) {
+    if (window) {
+        XPLMWindowInjectScript(window, script.c_str());
     }
 }
 
-bool Browser::hasInputFocus() {
-    if (!textureId || !handler) {
-        return false;
+// Everything the CEF integration used to inject at load end, in the same order:
+// navigator overrides first so the bridge and the page see them, then the
+// address bar, then the window.skyscript API. Each script guards itself against
+// running twice, because a single-page app can finish loading more than once.
+void Browser::injectPageScripts() {
+    injectScript(navigatorOverrideScript(app->config.user_agent));
+
+    if (!app->config.hide_addressbar) {
+        injectScript(addressBarScript());
     }
 
-    return handler->hasInputFocus;
+    injectScript(XplmBridge::getInjectionScript(app->config.console_logging));
 }
 
-void Browser::setFocus(bool focus) {
-    if (!textureId || !handler || !handler->browserInstance) {
-        return;
+const char* Browser::handleBrowserCall(XPLMWindowID inWindowID, const char* inJSON, void* inRefcon) {
+    (void)inWindowID;
+    Browser *browser = static_cast<Browser*>(inRefcon);
+    if (!browser || !browser->xplmBridge) {
+        return nullptr;
     }
 
-    handler->browserInstance->GetHost()->SetFocus(focus);
-    if (!focus && handler->hasInputFocus) {
-        std::string script = "document.activeElement?.blur();";
-        handler->browserInstance->GetMainFrame()->ExecuteJavaScript(script, handler->browserInstance->GetMainFrame()->GetURL(), 0);
-    }
-}
-
-void Browser::key(unsigned char key, unsigned char virtualKey, XPLMKeyFlags flags) {
-    if (!textureId || !handler || !handler->browserInstance) {
-        return;
-    }
-
-    CefKeyEvent keyEvent;
-    keyEvent.type = (flags == 0 || (flags & xplm_DownFlag) == xplm_DownFlag) ? KEYEVENT_KEYDOWN : KEYEVENT_KEYUP;
-
-#if IBM
-    wchar_t utf16Character;
-    MultiByteToWideChar(CP_UTF8, 0, (char *) &key, 1, &utf16Character, 1);
-    keyEvent.windows_key_code = virtualKey;
-    keyEvent.native_key_code = MapVirtualKey(virtualKey, MAPVK_VK_TO_VSC);
-    keyEvent.character = utf16Character;
-    keyEvent.unmodified_character = keyEvent.character;
-#else
-    auto it = virtualKeycodeToUnixKeycode.find(virtualKey);
-    if (it != virtualKeycodeToUnixKeycode.end()) {
-        int keyCode = it->second;
-        keyEvent.native_key_code = keyCode;
-    } else {
-        debug("Unknown key: 0x%02X VK: 0x%02X\n", key, virtualKey);
-        keyEvent.native_key_code = key;
-    }
-    keyEvent.windows_key_code = virtualKey;
-    keyEvent.character = key;
-    keyEvent.unmodified_character = keyEvent.character;
-#endif
-
-    keyEvent.is_system_key = false;
-    keyEvent.modifiers = 0;
-    if ((flags & xplm_ShiftFlag) == xplm_ShiftFlag) {
-        keyEvent.modifiers |= EVENTFLAG_SHIFT_DOWN;
-    }
-
-    if ((flags & xplm_OptionAltFlag) == xplm_OptionAltFlag) {
-        keyEvent.modifiers |= EVENTFLAG_ALT_DOWN;
-    }
-
-    bool controlKeyDown = (flags & xplm_ControlFlag) == xplm_ControlFlag;
-    bool commandKeyDown = isCommandKeyDown();
-
-    if (controlKeyDown) {
-        keyEvent.modifiers |= EVENTFLAG_CONTROL_DOWN;
-    }
-
-    if (commandKeyDown) {
-        keyEvent.modifiers |= EVENTFLAG_COMMAND_DOWN;
-    }
-
-    if (controlKeyDown || commandKeyDown) {
-        char shortcut = shortcutLetter(key, virtualKey);
-
-        if (shortcut == 'a') {
-            if (keyEvent.type == KEYEVENT_KEYDOWN) {
-                focusedOrMainFrame(handler->browserInstance)->SelectAll();
-            }
-            return;
-        } else if (shortcut == 'c') {
-            if (keyEvent.type == KEYEVENT_KEYDOWN) {
-                focusedOrMainFrame(handler->browserInstance)->Copy();
-            }
-            return;
-        } else if (shortcut == 'v') {
-            if (keyEvent.type == KEYEVENT_KEYDOWN) {
-                focusedOrMainFrame(handler->browserInstance)->Paste();
-            }
-            return;
-        }
-    }
-
-    handler->browserInstance->GetHost()->SendKeyEvent(keyEvent);
-
-    if (keyEvent.type == KEYEVENT_KEYDOWN && isprint(key)) {
-        CefKeyEvent textEvent;
-        textEvent.type = KEYEVENT_CHAR;
-        textEvent.character = keyEvent.character;
-        textEvent.unmodified_character = keyEvent.unmodified_character;
-        textEvent.native_key_code = keyEvent.native_key_code;
-        textEvent.windows_key_code = keyEvent.character;
-
-        handler->browserInstance->GetHost()->SendKeyEvent(textEvent);
-    }
-}
-
-bool Browser::goBack() {
-    if (!textureId || !handler || !handler->browserInstance) {
-        return false;
-    }
-
-    if (!handler->browserInstance->CanGoBack()) {
-        return false;
-    }
-
-    handler->browserInstance->GoBack();
-    return true;
-}
-
-void Browser::showDevTools() {
-    if (!handler || !handler->browserInstance) {
-        return;
-    }
-
-    if (handler->browserInstance->GetHost()->HasDevTools()) {
-        handler->browserInstance->GetHost()->CloseDevTools();
-        return;
-    }
-
-    CefWindowInfo windowInfo;
-    CefBrowserSettings settings;
-    CefPoint inspectAt;
-    handler->browserInstance->GetHost()->ShowDevTools(windowInfo, nullptr, settings, inspectAt);
-}
-
-CursorType Browser::cursor() {
-    if (!handler) {
-        return CursorDefault;
-    }
-
-    return handler->cursorState;
-}
-
-bool Browser::createBrowser() {
-    if (handler && handler->browserInstance) {
-        return false;
-    }
-
-    App *app = App::current;
-
-    if (!ensureCefRuntimeAvailable()) {
-        return false;
-    }
-
-    std::string cachePath = Path::getInstance()->pluginDirectory + "/cache";
-    if (!std::filesystem::exists(cachePath)) {
-        std::filesystem::create_directories(cachePath);
-    }
-
-    CefRequestContextSettings context_settings;
-    CefString(&context_settings.cache_path) = cachePath;
-
-    std::string language = "";
-    switch (XPLMLanguageCode()) {
-        case xplm_Language_English:
-            language = "en-US,en";
-            break;
-        case xplm_Language_French:
-            language = "fr-FR,fr";
-            break;
-        case xplm_Language_German:
-            language = "de-DE,de";
-            break;
-        case xplm_Language_Italian:
-            language = "it-IT,it";
-            break;
-        case xplm_Language_Spanish:
-            language = "es-ES,es";
-            break;
-        case xplm_Language_Korean:
-            language = "ko-KR,ko";
-            break;
-        case xplm_Language_Russian:
-            language = "ru-RU,ru";
-            break;
-        case xplm_Language_Greek:
-            language = "el-GR,el";
-            break;
-        case xplm_Language_Japanese:
-            language = "ja-JP,ja";
-            break;
-        case xplm_Language_Chinese:
-            language = "zh-CN,zh";
-            break;
-        case xplm_Language_Unknown:
-        default:
-            break;
-    }
-
-    if (!app->config.forced_language.empty()) {
-        language = app->config.forced_language;
-    }
-
-    if (!language.empty()) {
-        CefString(&context_settings.accept_language_list) = language;
-    }
-
-    context_settings.persist_user_preferences = true;
-    context_settings.persist_session_cookies = true;
-    requestContext = CefRequestContext::CreateContext(context_settings, nullptr);
-    currentUrl = prepareUrlForLoad(currentUrl);
-
-    CefBrowserSettings browser_settings;
-    browser_settings.windowless_frame_rate = app->config.framerate;
-    browser_settings.background_color = CefColorSetARGB(0xFF, 0xFF, 0xFF, 0xFF);
-
-    const auto &viewport = app->viewport;
-    handler = CefRefPtr<BrowserHandler>(new BrowserHandler(textureId, &currentUrl, &app->config, xplmBridge, app->name, viewport.browserWidth, viewport.browserHeight));
-
-    CefWindowInfo window_info;
-#if LIN
-    window_info.SetAsWindowless(0);
-#else
-    window_info.SetAsWindowless(nullptr);
-#endif
-    window_info.windowless_rendering_enabled = true;
-
-    bool browserCreated = CefBrowserHost::CreateBrowser(window_info, handler, currentUrl, browser_settings, nullptr, requestContext);
-    if (!browserCreated) {
-        app->showNotification(new Notification("Error creating browser", "An error occured while starting the browser.\nPlease verify if there are any updates for the " FRIENDLY_NAME " plugin and try again."));
-    }
-    debug("Browser for app '%s' created: %d\n", app->id.c_str(), browserCreated);
-    return true;
-}
-
-void Browser::registerLocalAppRoot() {
-    if (!requestContext || localAppHost.empty() || localAppRoot.empty()) {
-        return;
-    }
-
-    requestContext->RegisterSchemeHandlerFactory(
-        "https",
-        localAppHost,
-        CefRefPtr<CefSchemeHandlerFactory>(new LocalAppSchemeHandlerFactory(localAppRoot)));
-}
-
-std::string Browser::prepareUrlForLoad(const std::string& url) {
-    App *app = App::current;
-    if (!app) {
-        return url;
-    }
-
-    std::filesystem::path filePath;
-    std::string query;
-    std::string fragment;
-    if (!parseFileUrl(url, &filePath, &query, &fragment)) {
-        return url;
-    }
-
-    std::error_code ec;
-    std::filesystem::path root = std::filesystem::weakly_canonical(filePath.parent_path(), ec);
-    if (ec || root.empty()) {
-        return url;
-    }
-
-    localAppHost = localAppHostForId(app->id);
-    localAppRoot = root;
-    registerLocalAppRoot();
-    return localUrlForFile(filePath, root, localAppHost, query, fragment);
+    // The notification handlers act on App::current, as every other entry
+    // point from the sim does.
+    App *previous = App::current;
+    App::current = browser->app;
+    const char *response = browser->xplmBridge->handleRequest(inJSON ? inJSON : "null");
+    App::current = previous;
+    return response;
 }
 
 void Browser::updateGPSLocation() {
-    if (!handler || !handler->browserInstance) {
+    if (!window) {
         return;
     }
 
@@ -945,17 +400,8 @@ void Browser::updateGPSLocation() {
     stream << "airspeedKts: " << std::fixed << std::setprecision(0) << airspeedKts << ", ";
     stream << "}, timestamp: Date.now() }; for (let key in window.skyscript_watchers) { window.skyscript_watchers[key](window.skyscript_location); }";
 
-    handler->browserInstance->GetMainFrame()->ExecuteJavaScript(stream.str(), handler->browserInstance->GetMainFrame()->GetURL(), 0);
+    injectScript(stream.str());
     lastGpsUpdateTime = XPLMGetElapsedTime();
-}
-
-CefMouseEvent Browser::getMouseEvent(float normalizedX, float normalizedY) {
-    const auto &viewport = App::current->viewport;
-
-    CefMouseEvent mouseEvent;
-    mouseEvent.x = viewport.browserWidth * normalizedX;
-    mouseEvent.y = viewport.browserHeight * (1.0f - ((normalizedY - offsetStart) / (offsetEnd - offsetStart)));
-    return mouseEvent;
 }
 
 void Browser::onMessage(const std::string& channel, MessageHandler handler) {
@@ -968,4 +414,15 @@ void Browser::postMessage(const std::string& channel, const std::string& payload
     if (xplmBridge) {
         xplmBridge->postMessage(channel, payload);
     }
+}
+
+std::string Browser::fileUrlForPath(const std::string& path) {
+    std::error_code ec;
+    std::filesystem::path absolute = std::filesystem::absolute(path, ec);
+    std::string generic = (ec ? std::filesystem::path(path) : absolute).generic_string();
+    if (generic.empty() || generic.front() != '/') {
+        generic.insert(generic.begin(), '/');
+    }
+
+    return "file://" + percentEncodePath(generic);
 }
