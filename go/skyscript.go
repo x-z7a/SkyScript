@@ -132,11 +132,15 @@ type AppConfig struct {
 	Height         uint16
 	ConsoleLogging bool
 
-	// AudioMuted, ScrollSpeed, ForcedLanguage, Framerate, WindowTitleless and
-	// WindowOpacity have no effect: X-Plane owns the browser and the window
-	// chrome. They are kept so existing code still compiles.
+	// AudioMuted, ScrollSpeed, ForcedLanguage and Framerate have no effect:
+	// X-Plane owns the browser. They are kept so existing code still compiles.
+
+	// WindowTitleless gives the window SkyScript's title bar and resize grip
+	// instead of X-Plane's title bar.
 	WindowTitleless bool
-	WindowOpacity   float32
+	// WindowOpacity is the page opacity for titleless windows. Zero means the
+	// default.
+	WindowOpacity float32
 
 	// Defaults for notifications raised on this window. Each is overridable per
 	// notification via NotificationOptions.

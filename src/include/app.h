@@ -45,9 +45,11 @@ struct AppConfiguration {
     float notification_opacity;
     float notification_slide_seconds;
     bool notification_sound;
-    // No longer used: a browser window draws itself, so there is no chrome of
-    // ours to draw. Windows always carry X-Plane's title bar.
+    // SkyScript's own title bar and resize grip instead of X-Plane's title bar.
+    // A browser window draws itself, so the chrome lives in two small windows
+    // of our own glued above and below it.
     bool window_titleless;
+    // Page opacity for titleless windows, applied as CSS on the page.
     float window_opacity;
 #if DEBUG
     float debug_value_1;
@@ -70,6 +72,17 @@ private:
     Notification *notification;
     // True while the overlay window is up carrying a notification.
     bool notificationOverlay;
+    // Window drag from the title bar and resize from the footer grip. Both move
+    // the browser window; the chrome windows follow it.
+    bool windowDragActive;
+    bool windowResizeActive;
+    int dragStartX;
+    int dragStartY;
+    int dragLeft;
+    int dragTop;
+    int dragRight;
+    int dragBottom;
+    bool closeButtonPressed;
     void setViewport(int x, int y, unsigned short width, unsigned short height);
     void registerOverlayWindow();
     // Keep the overlay on top of the browser window, so a toast sits in the
@@ -79,12 +92,39 @@ private:
     void setNotificationOverlay(bool active);
     // Whether a notification raised right now would be visible.
     bool canRaiseNotificationOverlay() const;
+    void registerChromeWindows();
+    // Glue the title bar and footer windows to the browser window's edges.
+    // Called every frame they draw, so they follow X-Plane's own edge resizing.
+    void syncChromeGeometry();
+    // Chrome is shown with the browser, and never in VR, where X-Plane frames
+    // the window itself.
+    void updateChromeVisibility();
+    bool usesChrome() const;
+    // Panel-graphics draw callbacks for the chrome windows.
+    void drawTitleBar();
+    void drawFooter();
+    int handleTitleBarClick(int x, int y, XPLMMouseStatus status);
+    int handleFooterClick(int x, int y, XPLMMouseStatus status);
+    XPLMCursorStatus titleBarCursor(int x, int y);
+    XPLMCursorStatus footerCursor(int x, int y);
+    bool isCloseButtonPoint(int x, int y) const;
+    bool isResizeGripPoint(int x, int y) const;
 
 public:
     static App* current;
 
     static constexpr unsigned short defaultWindowWidth = 1024;
     static constexpr unsigned short defaultWindowHeight = 768;
+
+    // Chrome for titleless windows, in boxels: a title bar above the page and
+    // a footer carrying the resize grip below it. They sit outside the page,
+    // so a manifest's width/height stay the size of the page.
+    static constexpr int titleBarHeight = 28;
+    static constexpr int resizeFooterHeight = 16;
+    // Side of the square hit area for the resize grip, at the footer's right end.
+    static constexpr int resizeGripSize = 20;
+    // Side of the square hit area for the close button, at the title bar's left end.
+    static constexpr int closeButtonSize = 28;
 
     // Smallest page the window may be shrunk to.
     static constexpr int minimumContentWidth = 640;
@@ -102,6 +142,13 @@ public:
     // browser window ignores drawing callbacks, so notifications need a window
     // of their own to be drawn in.
     XPLMWindowID overlayWindow;
+    // The chrome of a titleless window: OpenGL windows above and below the
+    // browser window. nullptr for a window with X-Plane's own title bar.
+    XPLMWindowID titleWindow;
+    XPLMWindowID footerWindow;
+    // The title bar's font (an XPLMFontHandle). Panel graphics only draws text
+    // with a font the plugin loads.
+    void *titleFont;
     float brightness;
     WindowViewport viewport;
     AppConfiguration config;

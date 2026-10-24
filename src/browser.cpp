@@ -6,6 +6,7 @@
 #include "json.hpp"
 #include "xplm_bridge.h"
 
+#include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <iomanip>
@@ -229,6 +230,24 @@ const char* addressBarScript() {
     )";
 }
 
+// Page opacity for titleless windows. X-Plane has no opacity setting for a
+// browser window, so it is applied to the page itself; what shows through is
+// whatever X-Plane composites the page over.
+std::string opacityScript(float opacity) {
+    std::ostringstream css;
+    css << "html{opacity:" << std::fixed << std::setprecision(2) << opacity << " !important;}";
+    return
+        "(function(){"
+        "var style = document.getElementById('skyscript-opacity');"
+        "if (!style) {"
+        "    style = document.createElement('style');"
+        "    style.id = 'skyscript-opacity';"
+        "    (document.head || document.documentElement).appendChild(style);"
+        "}"
+        "style.textContent = " + jsStringLiteral(css.str()) + ";"
+        "})();";
+}
+
 } // namespace
 
 Browser::Browser(App *anApp) {
@@ -342,6 +361,11 @@ void Browser::injectPageScripts() {
 
     if (!app->config.hide_addressbar) {
         injectScript(addressBarScript());
+    }
+
+    float opacity = std::clamp(app->config.window_opacity, 0.2f, 1.0f);
+    if (app->config.window_titleless && opacity < 1.0f) {
+        injectScript(opacityScript(opacity));
     }
 
     injectScript(XplmBridge::getInjectionScript(app->config.console_logging));

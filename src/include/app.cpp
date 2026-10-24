@@ -1,11 +1,13 @@
 #include "app.h"
 
 #include <XPLMGraphics.h>
+#include <XPLMPanelGraphics.h>
 #include <XPLMProcessing.h>
 #include <XPLMUtilities.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <fstream>
 #include <sstream>
 
@@ -13,8 +15,26 @@
 #include "button.h"
 #include "config.h"
 #include "dataref.h"
+#include "drawing.h"
 #include "notification.h"
 #include "path.h"
+
+namespace {
+
+// The notification overlay is still drawn with OpenGL, and is created with the
+// pre-4.4 struct (which ends just before contentType): the path SkyScript's GL
+// drawing has always used. The old API wants every callback, so these fill
+// the gaps.
+constexpr int kLegacyWindowStructSize = static_cast<int>(offsetof(XPLMCreateWindow_t, contentType));
+
+int ignoreClick(XPLMWindowID, int, int, XPLMMouseStatus, void*) { return 0; }
+int consumeClick(XPLMWindowID, int, int, XPLMMouseStatus, void*) { return 1; }
+void ignoreKey(XPLMWindowID, char, XPLMKeyFlags, char, void*, int) {}
+XPLMCursorStatus defaultCursor(XPLMWindowID, int, int, void*) { return xplm_CursorDefault; }
+int ignoreWheel(XPLMWindowID, int, int, int, int, void*) { return 0; }
+int consumeWheel(XPLMWindowID, int, int, int, int, void*) { return 1; }
+
+} // namespace
 
 App* App::current = nullptr;
 
@@ -28,6 +48,18 @@ App::App(const std::string& aName, const std::string& anId, AppType aType, const
     notificationOverlay = false;
     window = nullptr;
     overlayWindow = nullptr;
+    titleWindow = nullptr;
+    footerWindow = nullptr;
+    titleFont = nullptr;
+    windowDragActive = false;
+    windowResizeActive = false;
+    dragStartX = 0;
+    dragStartY = 0;
+    dragLeft = 0;
+    dragTop = 0;
+    dragRight = 0;
+    dragBottom = 0;
+    closeButtonPressed = false;
     visible = false;
     browser = nullptr;
     brightness = 1.0f;
@@ -91,11 +123,29 @@ void App::deinitialize() {
         overlayWindow = nullptr;
     }
 
+    if (titleWindow) {
+        XPLMDestroyWindow(titleWindow);
+        titleWindow = nullptr;
+    }
+
+    if (footerWindow) {
+        XPLMDestroyWindow(footerWindow);
+        footerWindow = nullptr;
+    }
+
+    if (titleFont) {
+        XPLMDestroyFont(titleFont);
+        titleFont = nullptr;
+    }
+
     if (window) {
         XPLMDestroyWindow(window);
         window = nullptr;
     }
 
+    windowDragActive = false;
+    windowResizeActive = false;
+    closeButtonPressed = false;
     tasks.clear();
     buttons.clear();
     notificationOverlay = false;
@@ -121,6 +171,8 @@ void App::update() {
         browser->visibilityWillChange(false);
         visible = false;
     }
+
+    updateChromeVisibility();
 
     if (notificationOverlay) {
         syncOverlayGeometry();
@@ -199,6 +251,8 @@ void App::applyWindowMode() {
         clearNotification();
     }
 
+    updateChromeVisibility();
+
     if (visible) {
         XPLMBringWindowToFront(window);
     }
@@ -232,6 +286,11 @@ void App::showBrowser(std::string url) {
     }
 
     XPLMBringWindowToFront(window);
+    updateChromeVisibility();
+    if (titleWindow && footerWindow && usesChrome()) {
+        XPLMBringWindowToFront(titleWindow);
+        XPLMBringWindowToFront(footerWindow);
+    }
     // Keep a toast that is already up on top of the window just raised.
     if (notificationOverlay && overlayWindow) {
         XPLMBringWindowToFront(overlayWindow);
@@ -246,9 +305,14 @@ void App::hideBrowser() {
     browser->visibilityWillChange(false);
     visible = false;
 
+    windowDragActive = false;
+    windowResizeActive = false;
+    closeButtonPressed = false;
+
     if (window) {
         XPLMSetWindowIsVisible(window, 0);
     }
+    updateChromeVisibility();
 }
 
 void App::showNotification(Notification *aNotification) {
@@ -406,6 +470,14 @@ void App::registerWindow() {
         XPLMDestroyWindow(overlayWindow);
         overlayWindow = nullptr;
     }
+    if (titleWindow) {
+        XPLMDestroyWindow(titleWindow);
+        titleWindow = nullptr;
+    }
+    if (footerWindow) {
+        XPLMDestroyWindow(footerWindow);
+        footerWindow = nullptr;
+    }
     if (window) {
         XPLMDestroyWindow(window);
         window = nullptr;
@@ -418,6 +490,11 @@ void App::registerWindow() {
     float screenHeight = fabs(winTop - winBot);
     int width = config.width > 0 ? config.width : defaultWindowWidth;
     int height = config.height > 0 ? config.height : defaultWindowHeight;
+    // The manifest size is the page. Titleless chrome sits outside it, so the
+    // whole frame is centred and the page placed below the title bar.
+    int chromeTop = config.window_titleless ? titleBarHeight : 0;
+    int chromeBottom = config.window_titleless ? resizeFooterHeight : 0;
+    int frameHeight = height + chromeTop + chromeBottom;
 
     // Zero-initialised: from SDK 4.4.0 a NULL callback means "not interested",
     // and a browser window wants none of the input callbacks -- X-Plane routes
@@ -426,12 +503,14 @@ void App::registerWindow() {
     params.structSize = sizeof(params);
     params.left = (int)(winLeft + (screenWidth - width) / 2);
     params.right = params.left + width;
-    params.top = (int)(winTop - (screenHeight - height) / 2);
+    params.top = (int)(winTop - (screenHeight - frameHeight) / 2) - chromeTop;
     params.bottom = params.top - height;
     params.visible = 0;
     params.refcon = this;
     params.layer = xplm_WindowLayerFloatingWindows;
-    params.decorateAsFloatingWindow = xplm_WindowDecorationRoundRectangle;
+    // Self-decorated-resizable gives a titleless window X-Plane's edge resizing
+    // without its title bar; the chrome windows supply the rest.
+    params.decorateAsFloatingWindow = config.window_titleless ? xplm_WindowDecorationSelfDecoratedResizable : xplm_WindowDecorationRoundRectangle;
     params.contentType = xplm_WindowContentTypeBrowser;
     params.browserLoadFinishedFunc = [](XPLMWindowID inWindow, const char *inURL, void *inRefcon) {
         App *app = static_cast<App*>(inRefcon);
@@ -458,7 +537,9 @@ void App::registerWindow() {
         return;
     }
 
-    XPLMSetWindowTitle(window, name.c_str());
+    if (!config.window_titleless) {
+        XPLMSetWindowTitle(window, name.c_str());
+    }
     XPLMSetWindowResizingLimits(
         window,
         (std::max)(static_cast<int>(config.minimum_width), minimumContentWidth),
@@ -468,6 +549,9 @@ void App::registerWindow() {
 
     browser->attach(window);
     registerOverlayWindow();
+    if (config.window_titleless) {
+        registerChromeWindows();
+    }
     applyWindowMode();
     XPLMSetWindowIsVisible(window, 0);
 }
@@ -480,7 +564,7 @@ void App::registerOverlayWindow() {
     // browser window or the cockpit below it. The growl layer keeps it above
     // floating windows, the browser window included.
     XPLMCreateWindow_t params = {};
-    params.structSize = sizeof(params);
+    params.structSize = kLegacyWindowStructSize;
     params.left = left;
     params.top = top;
     params.right = right;
@@ -490,9 +574,14 @@ void App::registerOverlayWindow() {
     params.drawWindowFunc = [](XPLMWindowID inWindowID, void *inRefcon) {
         static_cast<App*>(inRefcon)->draw();
     };
+    // Returning 0 passes every click and scroll on to whatever is below.
+    params.handleMouseClickFunc = ignoreClick;
+    params.handleRightClickFunc = ignoreClick;
+    params.handleMouseWheelFunc = ignoreWheel;
+    params.handleKeyFunc = ignoreKey;
+    params.handleCursorFunc = defaultCursor;
     params.layer = xplm_WindowLayerGrowlNotifications;
     params.decorateAsFloatingWindow = xplm_WindowDecorationNone;
-    params.contentType = xplm_WindowContentTypeOpenGL;
 
     overlayWindow = XPLMCreateWindowEx(&params);
     if (!overlayWindow) {
@@ -501,6 +590,312 @@ void App::registerOverlayWindow() {
     }
 
     XPLMSetWindowIsVisible(overlayWindow, 0);
+}
+
+void App::registerChromeWindows() {
+    // Panel-graphics windows: X-Plane renders what they draw natively. As
+    // legacy OpenGL windows, X-Plane 12.4.4 drew their geometry mirrored top to
+    // bottom once the window was dragged, while their text stayed put. Self-
+    // decorated, so X-Plane draws nothing of its own and every click inside
+    // their bounds is ours. Placed by syncChromeGeometry, which keeps them on
+    // the browser window's edges.
+    XPLMCreateWindow_t params = {};
+    params.structSize = sizeof(params);
+    params.contentType = xplm_WindowContentTypePanelGraphics;
+    params.left = 0;
+    params.top = titleBarHeight;
+    params.right = 1;
+    params.bottom = 0;
+    params.visible = 0;
+    params.refcon = this;
+    params.layer = xplm_WindowLayerFloatingWindows;
+    params.decorateAsFloatingWindow = xplm_WindowDecorationSelfDecorated;
+    params.handleRightClickFunc = consumeClick;
+    params.handleMouseWheelFunc = consumeWheel;
+    params.handleKeyFunc = ignoreKey;
+
+    params.drawWindowFunc = [](XPLMWindowID inWindowID, void *inRefcon) {
+        static_cast<App*>(inRefcon)->drawTitleBar();
+    };
+    params.handleMouseClickFunc = [](XPLMWindowID inWindowID, int x, int y, XPLMMouseStatus status, void *inRefcon) -> int {
+        return static_cast<App*>(inRefcon)->handleTitleBarClick(x, y, status);
+    };
+    params.handleCursorFunc = [](XPLMWindowID inWindowID, int x, int y, void *inRefcon) -> XPLMCursorStatus {
+        return static_cast<App*>(inRefcon)->titleBarCursor(x, y);
+    };
+    titleWindow = XPLMCreateWindowEx(&params);
+
+    params.top = resizeFooterHeight;
+    params.drawWindowFunc = [](XPLMWindowID inWindowID, void *inRefcon) {
+        static_cast<App*>(inRefcon)->drawFooter();
+    };
+    params.handleMouseClickFunc = [](XPLMWindowID inWindowID, int x, int y, XPLMMouseStatus status, void *inRefcon) -> int {
+        return static_cast<App*>(inRefcon)->handleFooterClick(x, y, status);
+    };
+    params.handleCursorFunc = [](XPLMWindowID inWindowID, int x, int y, void *inRefcon) -> XPLMCursorStatus {
+        return static_cast<App*>(inRefcon)->footerCursor(x, y);
+    };
+    footerWindow = XPLMCreateWindowEx(&params);
+
+    if (!titleWindow || !footerWindow) {
+        debug("Could not create the window chrome for app '%s'.\n", id.c_str());
+        return;
+    }
+
+    // Panel graphics draws text only with a font we load, so borrow the one
+    // X-Plane's own UI uses. Without it the bars still work, just unlabelled.
+    if (titleFont) {
+        XPLMDestroyFont(titleFont);
+    }
+    titleFont = XPLMCreateFont(xplm_CharSetUnicode);
+    std::string fontPath = Path::getInstance()->rootDirectory + "/Resources/fonts/Roboto-Regular.ttf";
+    if (!XPLMFontAddFace(titleFont, fontPath.c_str())) {
+        debug("Could not load %s for the title bar of app '%s'.\n", fontPath.c_str(), id.c_str());
+    }
+
+    syncChromeGeometry();
+}
+
+bool App::usesChrome() const {
+    if (!window || !titleWindow || !footerWindow) {
+        return false;
+    }
+
+    return Dataref::getInstance()->getCached<int>("sim/graphics/VR/enabled") == 0;
+}
+
+void App::updateChromeVisibility() {
+    if (!titleWindow || !footerWindow) {
+        return;
+    }
+
+    int wanted = (visible && usesChrome()) ? 1 : 0;
+    if (wanted) {
+        syncChromeGeometry();
+    }
+    if (XPLMGetWindowIsVisible(titleWindow) != wanted) {
+        XPLMSetWindowIsVisible(titleWindow, wanted);
+    }
+    if (XPLMGetWindowIsVisible(footerWindow) != wanted) {
+        XPLMSetWindowIsVisible(footerWindow, wanted);
+    }
+}
+
+void App::syncChromeGeometry() {
+    if (!window || !titleWindow || !footerWindow) {
+        return;
+    }
+
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(window, &left, &top, &right, &bottom);
+
+    auto place = [](XPLMWindowID chrome, int l, int t, int r, int b) {
+        int cl, ct, cr, cb;
+        XPLMGetWindowGeometry(chrome, &cl, &ct, &cr, &cb);
+        if (cl != l || ct != t || cr != r || cb != b) {
+            XPLMSetWindowGeometry(chrome, l, t, r, b);
+        }
+    };
+
+    place(titleWindow, left, top + titleBarHeight, right, top);
+    place(footerWindow, left, bottom, right, bottom - resizeFooterHeight);
+}
+
+namespace {
+
+void fillRect(float left, float bottom, float right, float top, uint32_t color) {
+    XPLMVertex_t corners[4] = {{left, bottom}, {left, top}, {right, top}, {right, bottom}};
+    XPLMPolygon(color, corners, 4);
+}
+
+} // namespace
+
+// A real bar: opaque, lighter than the page, and closed off by a rule -- the
+// same three things every window manager uses to say "this strip is not the
+// document". The whole bar except the close button is the drag region.
+//
+// Panel graphics draws in the same global boxel coordinates
+// XPLMGetWindowGeometry reports, y up.
+void App::drawTitleBar() {
+    if (!visible || !usesChrome()) {
+        return;
+    }
+
+    // Every frame, so the bar follows X-Plane's own edge resizing.
+    syncChromeGeometry();
+
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(titleWindow, &left, &top, &right, &bottom);
+
+    float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
+    fillRect(left, bottom, right, top, XPLMMakeColor(0.105f, 0.125f, 0.15f, opacity * 0.94f));
+    // The bar's own bottom row of pixels, so the boundary reads as a rule.
+    fillRect(left, bottom, right, bottom + 1, XPLMMakeColor(0.95f, 0.97f, 1.0f, 0.16f));
+
+    // Close button: an "x" centred in its square at the bar's left end.
+    float centreX = left + closeButtonSize * 0.5f;
+    float centreY = (top + bottom) * 0.5f;
+    float half = 4.5f;
+    XPLMVertex_t cross[4] = {
+        {centreX - half, centreY - half}, {centreX + half, centreY + half},
+        {centreX - half, centreY + half}, {centreX + half, centreY - half},
+    };
+    uint32_t foreground = XPLMMakeColor(0.82f, 0.87f, 0.93f, 0.9f);
+    XPLMLinesWithWidth(foreground, 1.5f, cross, 4);
+
+    if (titleFont && !name.empty()) {
+        // The position is the baseline, so drop it by about a third of the size
+        // to centre the capitals on the bar.
+        constexpr float fontSize = 12.0f;
+        XPLMFontDrawString(titleFont, foreground, fontSize, left + closeButtonSize + 6.0f, centreY - fontSize * 0.35f, name.c_str(), xplm_JustLeft);
+    }
+}
+
+// The footer exists so the grip has somewhere to live that is not on top of
+// the page.
+void App::drawFooter() {
+    if (!visible || !usesChrome()) {
+        return;
+    }
+
+    syncChromeGeometry();
+
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(footerWindow, &left, &top, &right, &bottom);
+
+    float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
+    fillRect(left, bottom, right, top, XPLMMakeColor(0.105f, 0.125f, 0.15f, opacity * 0.94f));
+    fillRect(left, top - 1, right, top, XPLMMakeColor(0.95f, 0.97f, 1.0f, 0.16f));
+
+    // Three stacked diagonals: the grip every desktop toolkit draws, so it
+    // needs no label to be understood.
+    float gripRight = right - 5.0f;
+    float gripBottom = bottom + 3.0f;
+    float span = 9.0f;
+    XPLMVertex_t grip[6];
+    for (int line = 0; line < 3; ++line) {
+        float length = span - line * 4.0f;
+        grip[line * 2] = {gripRight - length, gripBottom};
+        grip[line * 2 + 1] = {gripRight, gripBottom + length};
+    }
+    XPLMLinesWithWidth(XPLMMakeColor(0.95f, 0.97f, 1.0f, 0.55f), 1.5f, grip, 6);
+}
+
+bool App::isCloseButtonPoint(int x, int y) const {
+    if (!titleWindow) {
+        return false;
+    }
+
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(titleWindow, &left, &top, &right, &bottom);
+    return x >= left && x < left + closeButtonSize && y >= bottom && y <= top;
+}
+
+bool App::isResizeGripPoint(int x, int y) const {
+    if (!footerWindow) {
+        return false;
+    }
+
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(footerWindow, &left, &top, &right, &bottom);
+    return x > right - resizeGripSize && x <= right && y >= bottom && y <= top;
+}
+
+int App::handleTitleBarClick(int x, int y, XPLMMouseStatus status) {
+    if (!visible || !window) {
+        return 0;
+    }
+
+    if (status == xplm_MouseDown) {
+        if (isCloseButtonPoint(x, y)) {
+            closeButtonPressed = true;
+            return 1;
+        }
+
+        XPLMGetWindowGeometry(window, &dragLeft, &dragTop, &dragRight, &dragBottom);
+        dragStartX = x;
+        dragStartY = y;
+        windowDragActive = true;
+        XPLMBringWindowToFront(window);
+        XPLMBringWindowToFront(titleWindow);
+        XPLMBringWindowToFront(footerWindow);
+        return 1;
+    }
+
+    if (status == xplm_MouseDrag && windowDragActive) {
+        int deltaX = x - dragStartX;
+        int deltaY = y - dragStartY;
+        XPLMSetWindowGeometry(window, dragLeft + deltaX, dragTop + deltaY, dragRight + deltaX, dragBottom + deltaY);
+        syncChromeGeometry();
+        return 1;
+    }
+
+    if (status == xplm_MouseUp) {
+        // Closing on release, and only if the release is still on the button,
+        // is what lets a user change their mind by dragging off it.
+        bool close = closeButtonPressed && isCloseButtonPoint(x, y);
+        closeButtonPressed = false;
+        windowDragActive = false;
+        if (close) {
+            hideBrowser();
+        }
+        return 1;
+    }
+
+    return 1;
+}
+
+int App::handleFooterClick(int x, int y, XPLMMouseStatus status) {
+    if (!visible || !window) {
+        return 0;
+    }
+
+    if (status == xplm_MouseDown) {
+        if (!isResizeGripPoint(x, y)) {
+            return 1;
+        }
+
+        XPLMGetWindowGeometry(window, &dragLeft, &dragTop, &dragRight, &dragBottom);
+        dragStartX = x;
+        dragStartY = y;
+        windowResizeActive = true;
+        return 1;
+    }
+
+    if (status == xplm_MouseDrag && windowResizeActive) {
+        // Bottom-right grip: the left and top edges are the anchor, so only the
+        // right and bottom move and the window does not walk across the screen.
+        int right = dragRight + (x - dragStartX);
+        int bottom = dragBottom + (y - dragStartY);
+
+        // The same floor XPLMSetWindowResizingLimits enforces for X-Plane's own
+        // edge handles, applied here because we set the geometry directly.
+        int minimumWidth = (std::max)(static_cast<int>(config.minimum_width), minimumContentWidth);
+        if (right - dragLeft < minimumWidth) {
+            right = dragLeft + minimumWidth;
+        }
+        if (dragTop - bottom < minimumContentHeight) {
+            bottom = dragTop - minimumContentHeight;
+        }
+
+        XPLMSetWindowGeometry(window, dragLeft, dragTop, right, bottom);
+        syncChromeGeometry();
+        return 1;
+    }
+
+    if (status == xplm_MouseUp) {
+        windowResizeActive = false;
+    }
+
+    return 1;
+}
+
+XPLMCursorStatus App::titleBarCursor(int x, int y) {
+    return isCloseButtonPoint(x, y) ? xplm_CursorButton : xplm_CursorDefault;
+}
+
+XPLMCursorStatus App::footerCursor(int x, int y) {
+    return (windowResizeActive || isResizeGripPoint(x, y)) ? xplm_CursorFourArrows : xplm_CursorDefault;
 }
 
 AppConfiguration App::defaultConfig() {
