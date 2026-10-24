@@ -1,6 +1,7 @@
 #include "app.h"
 
 #include <XPLMGraphics.h>
+#include <XPLMPanelGraphics.h>
 #include <XPLMProcessing.h>
 #include <XPLMUtilities.h>
 
@@ -20,11 +21,10 @@
 
 namespace {
 
-// OpenGL-drawn windows are created with the pre-4.4 struct, which ends just
-// before contentType. Created with the 4.4 struct, X-Plane 12.4.4's legacy GL
-// bridge drew their glBegin/glVertex geometry flipped top to bottom while text
-// came out right; the older struct is the path SkyScript's GL drawing has
-// always used. The old API wants every callback, so these fill the gaps.
+// The notification overlay is still drawn with OpenGL, and is created with the
+// pre-4.4 struct (which ends just before contentType): the path SkyScript's GL
+// drawing has always used. The old API wants every callback, so these fill
+// the gaps.
 constexpr int kLegacyWindowStructSize = static_cast<int>(offsetof(XPLMCreateWindow_t, contentType));
 
 int ignoreClick(XPLMWindowID, int, int, XPLMMouseStatus, void*) { return 0; }
@@ -33,30 +33,6 @@ void ignoreKey(XPLMWindowID, char, XPLMKeyFlags, char, void*, int) {}
 XPLMCursorStatus defaultCursor(XPLMWindowID, int, int, void*) { return xplm_CursorDefault; }
 int ignoreWheel(XPLMWindowID, int, int, int, int, void*) { return 0; }
 int consumeWheel(XPLMWindowID, int, int, int, int, void*) { return 1; }
-
-// Once per window: what the GL bridge hands a draw callback, for diagnosing
-// drawing that lands in the wrong place.
-void logGlStateOnce(const char *label, XPLMWindowID window, bool *logged) {
-    if (*logged) {
-        return;
-    }
-    *logged = true;
-
-    GLint glViewport[4] = {0, 0, 0, 0};
-    GLfloat projection[16] = {0};
-    GLfloat modelview[16] = {0};
-    glGetIntegerv(GL_VIEWPORT, glViewport);
-    glGetFloatv(GL_PROJECTION_MATRIX, projection);
-    glGetFloatv(GL_MODELVIEW_MATRIX, modelview);
-
-    int left, top, right, bottom;
-    XPLMGetWindowGeometry(window, &left, &top, &right, &bottom);
-    debug("%s window l=%d t=%d r=%d b=%d; GL viewport %d %d %d %d; projection sx=%.5f sy=%.5f tx=%.3f ty=%.3f; modelview sy=%.3f ty=%.3f\n",
-          label, left, top, right, bottom,
-          glViewport[0], glViewport[1], glViewport[2], glViewport[3],
-          projection[0], projection[5], projection[12], projection[13],
-          modelview[5], modelview[13]);
-}
 
 } // namespace
 
@@ -74,6 +50,7 @@ App::App(const std::string& aName, const std::string& anId, AppType aType, const
     overlayWindow = nullptr;
     titleWindow = nullptr;
     footerWindow = nullptr;
+    titleFont = nullptr;
     windowDragActive = false;
     windowResizeActive = false;
     dragStartX = 0;
@@ -154,6 +131,11 @@ void App::deinitialize() {
     if (footerWindow) {
         XPLMDestroyWindow(footerWindow);
         footerWindow = nullptr;
+    }
+
+    if (titleFont) {
+        XPLMDestroyFont(titleFont);
+        titleFont = nullptr;
     }
 
     if (window) {
@@ -611,11 +593,15 @@ void App::registerOverlayWindow() {
 }
 
 void App::registerChromeWindows() {
-    // Plain OpenGL windows with no decoration of X-Plane's: they draw the bars
-    // themselves and own every click inside their bounds. Placed by
-    // syncChromeGeometry, which keeps them on the browser window's edges.
+    // Panel-graphics windows: X-Plane renders what they draw natively. As
+    // legacy OpenGL windows, X-Plane 12.4.4 drew their geometry mirrored top to
+    // bottom once the window was dragged, while their text stayed put. Self-
+    // decorated, so X-Plane draws nothing of its own and every click inside
+    // their bounds is ours. Placed by syncChromeGeometry, which keeps them on
+    // the browser window's edges.
     XPLMCreateWindow_t params = {};
-    params.structSize = kLegacyWindowStructSize;
+    params.structSize = sizeof(params);
+    params.contentType = xplm_WindowContentTypePanelGraphics;
     params.left = 0;
     params.top = titleBarHeight;
     params.right = 1;
@@ -654,6 +640,17 @@ void App::registerChromeWindows() {
     if (!titleWindow || !footerWindow) {
         debug("Could not create the window chrome for app '%s'.\n", id.c_str());
         return;
+    }
+
+    // Panel graphics draws text only with a font we load, so borrow the one
+    // X-Plane's own UI uses. Without it the bars still work, just unlabelled.
+    if (titleFont) {
+        XPLMDestroyFont(titleFont);
+    }
+    titleFont = XPLMCreateFont(xplm_CharSetUnicode);
+    std::string fontPath = Path::getInstance()->rootDirectory + "/Resources/fonts/Roboto-Regular.ttf";
+    if (!XPLMFontAddFace(titleFont, fontPath.c_str())) {
+        debug("Could not load %s for the title bar of app '%s'.\n", fontPath.c_str(), id.c_str());
     }
 
     syncChromeGeometry();
@@ -704,54 +701,54 @@ void App::syncChromeGeometry() {
     place(footerWindow, left, bottom, right, bottom - resizeFooterHeight);
 }
 
-void App::setViewportFromWindow(XPLMWindowID aWindow) {
-    int left, top, right, bottom;
-    XPLMGetWindowGeometry(aWindow, &left, &top, &right, &bottom);
-    setViewport(left, bottom, static_cast<unsigned short>((std::max)(1, right - left)), static_cast<unsigned short>((std::max)(1, top - bottom)));
+namespace {
+
+void fillRect(float left, float bottom, float right, float top, uint32_t color) {
+    XPLMVertex_t corners[4] = {{left, bottom}, {left, top}, {right, top}, {right, bottom}};
+    XPLMPolygon(color, corners, 4);
 }
+
+} // namespace
 
 // A real bar: opaque, lighter than the page, and closed off by a rule -- the
 // same three things every window manager uses to say "this strip is not the
 // document". The whole bar except the close button is the drag region.
+//
+// Panel graphics draws in the same global boxel coordinates
+// XPLMGetWindowGeometry reports, y up.
 void App::drawTitleBar() {
     if (!visible || !usesChrome()) {
         return;
     }
 
-    App::current = this;
     // Every frame, so the bar follows X-Plane's own edge resizing.
     syncChromeGeometry();
-    setViewportFromWindow(titleWindow);
-    static bool titleLogged = false;
-    logGlStateOnce("Title bar", titleWindow, &titleLogged);
+
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(titleWindow, &left, &top, &right, &bottom);
 
     float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
-    XPLMSetGraphicsState(0, 0, 0, 0, 1, 0, 0);
-
-    glColor4f(0.105f, 0.125f, 0.15f, opacity * 0.94f);
-    Drawing::DrawRect(0.0f, 0.0f, 1.0f, 1.0f);
-
+    fillRect(left, bottom, right, top, XPLMMakeColor(0.105f, 0.125f, 0.15f, opacity * 0.94f));
     // The bar's own bottom row of pixels, so the boundary reads as a rule.
-    glColor4f(0.95f, 0.97f, 1.0f, 0.16f);
-    Drawing::DrawRect(0.0f, 0.0f, 1.0f, 1.0f / viewport.height);
+    fillRect(left, bottom, right, bottom + 1, XPLMMakeColor(0.95f, 0.97f, 1.0f, 0.16f));
 
     // Close button: an "x" centred in its square at the bar's left end.
-    float centreX = (closeButtonSize * 0.5f) / viewport.width;
-    float halfX = 4.5f / viewport.width;
-    float halfY = 4.5f / viewport.height;
-    glColor4f(0.82f, 0.87f, 0.93f, 0.9f);
-    Drawing::DrawLine(centreX - halfX, 0.5f - halfY, centreX + halfX, 0.5f + halfY, 1.5f);
-    Drawing::DrawLine(centreX - halfX, 0.5f + halfY, centreX + halfX, 0.5f - halfY, 1.5f);
+    float centreX = left + closeButtonSize * 0.5f;
+    float centreY = (top + bottom) * 0.5f;
+    float half = 4.5f;
+    XPLMVertex_t cross[4] = {
+        {centreX - half, centreY - half}, {centreX + half, centreY + half},
+        {centreX - half, centreY + half}, {centreX + half, centreY - half},
+    };
+    uint32_t foreground = XPLMMakeColor(0.82f, 0.87f, 0.93f, 0.9f);
+    XPLMLinesWithWidth(foreground, 1.5f, cross, 4);
 
-    if (!name.empty()) {
-        // DrawText centres on x, so the left edge of the string is the inset
-        // and the x passed is the inset plus half the width.
-        float inset = static_cast<float>(closeButtonSize + 6) / viewport.width;
-        float textWidth = Drawing::TextWidth(name);
-        Drawing::DrawText(name, inset + textWidth / 2.0f, 0.5f, 1.0f, { 0.82f, 0.87f, 0.93f });
+    if (titleFont && !name.empty()) {
+        // The position is the baseline, so drop it by about a third of the size
+        // to centre the capitals on the bar.
+        constexpr float fontSize = 12.0f;
+        XPLMFontDrawString(titleFont, foreground, fontSize, left + closeButtonSize + 6.0f, centreY - fontSize * 0.35f, name.c_str(), xplm_JustLeft);
     }
-
-    App::current = nullptr;
 }
 
 // The footer exists so the grip has somewhere to live that is not on top of
@@ -761,36 +758,27 @@ void App::drawFooter() {
         return;
     }
 
-    App::current = this;
     syncChromeGeometry();
-    setViewportFromWindow(footerWindow);
-    static bool footerLogged = false;
-    logGlStateOnce("Footer", footerWindow, &footerLogged);
+
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(footerWindow, &left, &top, &right, &bottom);
 
     float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
-    XPLMSetGraphicsState(0, 0, 0, 0, 1, 0, 0);
-
-    glColor4f(0.105f, 0.125f, 0.15f, opacity * 0.94f);
-    Drawing::DrawRect(0.0f, 0.0f, 1.0f, 1.0f);
-
-    glColor4f(0.95f, 0.97f, 1.0f, 0.16f);
-    Drawing::DrawRect(0.0f, 1.0f - (1.0f / viewport.height), 1.0f, 1.0f);
+    fillRect(left, bottom, right, top, XPLMMakeColor(0.105f, 0.125f, 0.15f, opacity * 0.94f));
+    fillRect(left, top - 1, right, top, XPLMMakeColor(0.95f, 0.97f, 1.0f, 0.16f));
 
     // Three stacked diagonals: the grip every desktop toolkit draws, so it
     // needs no label to be understood.
-    float right = 1.0f - (5.0f / viewport.width);
-    float bottom = 3.0f / viewport.height;
+    float gripRight = right - 5.0f;
+    float gripBottom = bottom + 3.0f;
     float span = 9.0f;
-
-    glColor4f(0.95f, 0.97f, 1.0f, 0.55f);
+    XPLMVertex_t grip[6];
     for (int line = 0; line < 3; ++line) {
-        float offset = line * 4.0f;
-        float x1 = right - (span - offset) / viewport.width;
-        float y2 = bottom + (span - offset) / viewport.height;
-        Drawing::DrawLine(x1, bottom, right, y2, 1.5f);
+        float length = span - line * 4.0f;
+        grip[line * 2] = {gripRight - length, gripBottom};
+        grip[line * 2 + 1] = {gripRight, gripBottom + length};
     }
-
-    App::current = nullptr;
+    XPLMLinesWithWidth(XPLMMakeColor(0.95f, 0.97f, 1.0f, 0.55f), 1.5f, grip, 6);
 }
 
 bool App::isCloseButtonPoint(int x, int y) const {

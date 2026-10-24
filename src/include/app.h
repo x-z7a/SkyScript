@@ -100,6 +100,7 @@ private:
     // the window itself.
     void updateChromeVisibility();
     bool usesChrome() const;
+    // Panel-graphics draw callbacks for the chrome windows.
     void drawTitleBar();
     void drawFooter();
     int handleTitleBarClick(int x, int y, XPLMMouseStatus status);
@@ -108,7 +109,6 @@ private:
     XPLMCursorStatus footerCursor(int x, int y);
     bool isCloseButtonPoint(int x, int y) const;
     bool isResizeGripPoint(int x, int y) const;
-    void setViewportFromWindow(XPLMWindowID window);
 
 public:
     static App* current;
@@ -146,6 +146,9 @@ public:
     // browser window. nullptr for a window with X-Plane's own title bar.
     XPLMWindowID titleWindow;
     XPLMWindowID footerWindow;
+    // The title bar's font (an XPLMFontHandle). Panel graphics only draws text
+    // with a font the plugin loads.
+    void *titleFont;
     float brightness;
     WindowViewport viewport;
     AppConfiguration config;
