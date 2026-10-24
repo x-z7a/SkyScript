@@ -298,7 +298,7 @@ XplmRequest parseRequest(const json& body) {
 
 } // namespace
 
-const char* XplmBridge::handleRequest(const char* text) {
+std::string XplmBridge::handleRequest(const char* text) {
     json envelope;
     try {
         json body = json::parse(text);
@@ -319,8 +319,7 @@ const char* XplmBridge::handleRequest(const char* text) {
         envelope["error"] = e.what();
     }
 
-    lastResponse = dumpJson(envelope);
-    return lastResponse.c_str();
+    return dumpJson(envelope);
 }
 
 std::optional<std::string> XplmBridge::dispatch(const XplmRequest& req) {

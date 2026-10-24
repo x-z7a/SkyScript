@@ -28,11 +28,14 @@ IF(NOT EXISTS "${XPLANE_INCLUDES_PATH}/XPLM")
     MESSAGE(FATAL_ERROR "XPLANE_SDK_ROOT is invalid: ${XPLANE_SDK_ROOT}")
 ENDIF()
 
-# Browser windows (xplm_WindowContentTypeBrowser) arrived in SDK 4.4.0. An older
-# SDK fails much later with a wall of undeclared identifiers, so say so here.
+# Browser windows (xplm_WindowContentTypeBrowser) and XPLMReturnString, which
+# browser-function replies must go through, arrived in SDK 4.4.0. An older SDK
+# fails much later with a wall of undeclared identifiers, so say so here.
 FILE(READ "${XPLANE_INCLUDES_PATH}/XPLM/XPLMDisplay.h" XPLM_DISPLAY_HEADER)
+FILE(READ "${XPLANE_INCLUDES_PATH}/XPLM/XPLMUtilities.h" XPLM_UTILITIES_HEADER)
 STRING(FIND "${XPLM_DISPLAY_HEADER}" "XPLMWindowSetURL" XPLM_HAS_BROWSER_WINDOWS)
-IF(XPLM_HAS_BROWSER_WINDOWS EQUAL -1)
+STRING(FIND "${XPLM_UTILITIES_HEADER}" "XPLMReturnString" XPLM_HAS_RETURN_STRING)
+IF(XPLM_HAS_BROWSER_WINDOWS EQUAL -1 OR XPLM_HAS_RETURN_STRING EQUAL -1)
     MESSAGE(FATAL_ERROR "SkyScript needs the X-Plane SDK 4.4.0 or newer; ${XPLANE_SDK_ROOT} has no browser window API")
 ENDIF()
 

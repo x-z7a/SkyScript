@@ -35,7 +35,8 @@ struct PendingPost {
 //
 // Requests arrive through X-Plane's browser-function bridge: the injected API
 // calls xplane.skyscript({action, ...}), X-Plane hands us the argument as JSON
-// on the main thread, and whatever JSON we return resolves the page's Promise.
+// on the main thread, and the JSON we hand back through XPLMReturnString
+// resolves the page's Promise.
 // That reply is always an envelope, {"ok":true,"value":...} or
 // {"ok":false,"error":"..."}, which the injected API turns into resolve/reject.
 class XplmBridge {
@@ -56,9 +57,6 @@ private:
     // window to post to without touching the window itself.
     std::atomic<bool> windowReady{false};
 
-    // Owns the reply handed back to X-Plane, which reads it after we return.
-    std::string lastResponse;
-
     // Each returns the JSON text of the value the page's Promise resolves to,
     // or nothing for a call that resolves to undefined. Failures throw, and the
     // message becomes the rejection.
@@ -70,9 +68,9 @@ public:
     // The page calls this as xplane.skyscript(request).
     static constexpr const char* functionName = "skyscript";
 
-    // Answer one request from the page. The returned pointer stays valid until
-    // the next call.
-    const char* handleRequest(const char* json);
+    // Answer one request from the page with its JSON envelope. The caller
+    // hands it to X-Plane through XPLMReturnString.
+    std::string handleRequest(const char* json);
 
     // Deliver queued plugin-to-JS messages. Main thread only.
     void processPendingPosts();

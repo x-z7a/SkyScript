@@ -225,7 +225,7 @@ if has_platform mac; then
     [ -d "$XPLANE_SDK_ROOT/CHeaders/Wrappers" ] || die "Missing X-Plane Wrappers headers at $XPLANE_SDK_ROOT"
     [ -f "$XPLANE_SDK_ROOT/Libraries/Mac/XPLM.framework/XPLM" ] || die "Missing XPLM.framework at $XPLANE_SDK_ROOT"
     [ -f "$XPLANE_SDK_ROOT/Libraries/Mac/XPWidgets.framework/XPWidgets" ] || die "Missing XPWidgets.framework at $XPLANE_SDK_ROOT"
-    grep -q XPLMWindowSetURL "$XPLANE_SDK_ROOT/CHeaders/XPLM/XPLMDisplay.h" || die "The X-Plane SDK at $XPLANE_SDK_ROOT is older than 4.4.0, which SkyScript needs for browser windows"
+    grep -q XPLMReturnString "$XPLANE_SDK_ROOT/CHeaders/XPLM/XPLMUtilities.h" || die "The X-Plane SDK at $XPLANE_SDK_ROOT is older than 4.4.0, which SkyScript needs for browser windows"
 fi
 
 for platform in $PLATFORMS; do

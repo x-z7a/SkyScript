@@ -351,16 +351,20 @@ const char* Browser::handleBrowserCall(XPLMWindowID inWindowID, const char* inJS
     (void)inWindowID;
     Browser *browser = static_cast<Browser*>(inRefcon);
     if (!browser || !browser->xplmBridge) {
-        return nullptr;
+        return XPLMReturnString("{\"ok\":false,\"error\":\"SkyScript bridge is not available\"}");
     }
 
     // The notification handlers act on App::current, as every other entry
     // point from the sim does.
     App *previous = App::current;
     App::current = browser->app;
-    const char *response = browser->xplmBridge->handleRequest(inJSON ? inJSON : "null");
+    std::string response = browser->xplmBridge->handleRequest(inJSON ? inJSON : "null");
     App::current = previous;
-    return response;
+
+    // X-Plane only accepts a reply returned through XPLMReturnString, which
+    // copies it into a slot X-Plane owns; any other pointer is reported as a
+    // plugin error and the page's Promise resolves to null.
+    return XPLMReturnString(response.c_str());
 }
 
 void Browser::updateGPSLocation() {
