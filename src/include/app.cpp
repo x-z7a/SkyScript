@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <fstream>
 #include <sstream>
 
@@ -16,6 +17,48 @@
 #include "drawing.h"
 #include "notification.h"
 #include "path.h"
+
+namespace {
+
+// OpenGL-drawn windows are created with the pre-4.4 struct, which ends just
+// before contentType. Created with the 4.4 struct, X-Plane 12.4.4's legacy GL
+// bridge drew their glBegin/glVertex geometry flipped top to bottom while text
+// came out right; the older struct is the path SkyScript's GL drawing has
+// always used. The old API wants every callback, so these fill the gaps.
+constexpr int kLegacyWindowStructSize = static_cast<int>(offsetof(XPLMCreateWindow_t, contentType));
+
+int ignoreClick(XPLMWindowID, int, int, XPLMMouseStatus, void*) { return 0; }
+int consumeClick(XPLMWindowID, int, int, XPLMMouseStatus, void*) { return 1; }
+void ignoreKey(XPLMWindowID, char, XPLMKeyFlags, char, void*, int) {}
+XPLMCursorStatus defaultCursor(XPLMWindowID, int, int, void*) { return xplm_CursorDefault; }
+int ignoreWheel(XPLMWindowID, int, int, int, int, void*) { return 0; }
+int consumeWheel(XPLMWindowID, int, int, int, int, void*) { return 1; }
+
+// Once per window: what the GL bridge hands a draw callback, for diagnosing
+// drawing that lands in the wrong place.
+void logGlStateOnce(const char *label, XPLMWindowID window, bool *logged) {
+    if (*logged) {
+        return;
+    }
+    *logged = true;
+
+    GLint glViewport[4] = {0, 0, 0, 0};
+    GLfloat projection[16] = {0};
+    GLfloat modelview[16] = {0};
+    glGetIntegerv(GL_VIEWPORT, glViewport);
+    glGetFloatv(GL_PROJECTION_MATRIX, projection);
+    glGetFloatv(GL_MODELVIEW_MATRIX, modelview);
+
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(window, &left, &top, &right, &bottom);
+    debug("%s window l=%d t=%d r=%d b=%d; GL viewport %d %d %d %d; projection sx=%.5f sy=%.5f tx=%.3f ty=%.3f; modelview sy=%.3f ty=%.3f\n",
+          label, left, top, right, bottom,
+          glViewport[0], glViewport[1], glViewport[2], glViewport[3],
+          projection[0], projection[5], projection[12], projection[13],
+          modelview[5], modelview[13]);
+}
+
+} // namespace
 
 App* App::current = nullptr;
 
@@ -539,7 +582,7 @@ void App::registerOverlayWindow() {
     // browser window or the cockpit below it. The growl layer keeps it above
     // floating windows, the browser window included.
     XPLMCreateWindow_t params = {};
-    params.structSize = sizeof(params);
+    params.structSize = kLegacyWindowStructSize;
     params.left = left;
     params.top = top;
     params.right = right;
@@ -549,9 +592,14 @@ void App::registerOverlayWindow() {
     params.drawWindowFunc = [](XPLMWindowID inWindowID, void *inRefcon) {
         static_cast<App*>(inRefcon)->draw();
     };
+    // Returning 0 passes every click and scroll on to whatever is below.
+    params.handleMouseClickFunc = ignoreClick;
+    params.handleRightClickFunc = ignoreClick;
+    params.handleMouseWheelFunc = ignoreWheel;
+    params.handleKeyFunc = ignoreKey;
+    params.handleCursorFunc = defaultCursor;
     params.layer = xplm_WindowLayerGrowlNotifications;
     params.decorateAsFloatingWindow = xplm_WindowDecorationNone;
-    params.contentType = xplm_WindowContentTypeOpenGL;
 
     overlayWindow = XPLMCreateWindowEx(&params);
     if (!overlayWindow) {
@@ -567,7 +615,7 @@ void App::registerChromeWindows() {
     // themselves and own every click inside their bounds. Placed by
     // syncChromeGeometry, which keeps them on the browser window's edges.
     XPLMCreateWindow_t params = {};
-    params.structSize = sizeof(params);
+    params.structSize = kLegacyWindowStructSize;
     params.left = 0;
     params.top = titleBarHeight;
     params.right = 1;
@@ -575,8 +623,10 @@ void App::registerChromeWindows() {
     params.visible = 0;
     params.refcon = this;
     params.layer = xplm_WindowLayerFloatingWindows;
-    params.decorateAsFloatingWindow = xplm_WindowDecorationNone;
-    params.contentType = xplm_WindowContentTypeOpenGL;
+    params.decorateAsFloatingWindow = xplm_WindowDecorationSelfDecorated;
+    params.handleRightClickFunc = consumeClick;
+    params.handleMouseWheelFunc = consumeWheel;
+    params.handleKeyFunc = ignoreKey;
 
     params.drawWindowFunc = [](XPLMWindowID inWindowID, void *inRefcon) {
         static_cast<App*>(inRefcon)->drawTitleBar();
@@ -672,6 +722,8 @@ void App::drawTitleBar() {
     // Every frame, so the bar follows X-Plane's own edge resizing.
     syncChromeGeometry();
     setViewportFromWindow(titleWindow);
+    static bool titleLogged = false;
+    logGlStateOnce("Title bar", titleWindow, &titleLogged);
 
     float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
     XPLMSetGraphicsState(0, 0, 0, 0, 1, 0, 0);
@@ -712,6 +764,8 @@ void App::drawFooter() {
     App::current = this;
     syncChromeGeometry();
     setViewportFromWindow(footerWindow);
+    static bool footerLogged = false;
+    logGlStateOnce("Footer", footerWindow, &footerLogged);
 
     float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
     XPLMSetGraphicsState(0, 0, 0, 0, 1, 0, 0);
