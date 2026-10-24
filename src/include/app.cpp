@@ -13,6 +13,7 @@
 #include "button.h"
 #include "config.h"
 #include "dataref.h"
+#include "drawing.h"
 #include "notification.h"
 #include "path.h"
 
@@ -28,6 +29,17 @@ App::App(const std::string& aName, const std::string& anId, AppType aType, const
     notificationOverlay = false;
     window = nullptr;
     overlayWindow = nullptr;
+    titleWindow = nullptr;
+    footerWindow = nullptr;
+    windowDragActive = false;
+    windowResizeActive = false;
+    dragStartX = 0;
+    dragStartY = 0;
+    dragLeft = 0;
+    dragTop = 0;
+    dragRight = 0;
+    dragBottom = 0;
+    closeButtonPressed = false;
     visible = false;
     browser = nullptr;
     brightness = 1.0f;
@@ -91,11 +103,24 @@ void App::deinitialize() {
         overlayWindow = nullptr;
     }
 
+    if (titleWindow) {
+        XPLMDestroyWindow(titleWindow);
+        titleWindow = nullptr;
+    }
+
+    if (footerWindow) {
+        XPLMDestroyWindow(footerWindow);
+        footerWindow = nullptr;
+    }
+
     if (window) {
         XPLMDestroyWindow(window);
         window = nullptr;
     }
 
+    windowDragActive = false;
+    windowResizeActive = false;
+    closeButtonPressed = false;
     tasks.clear();
     buttons.clear();
     notificationOverlay = false;
@@ -121,6 +146,8 @@ void App::update() {
         browser->visibilityWillChange(false);
         visible = false;
     }
+
+    updateChromeVisibility();
 
     if (notificationOverlay) {
         syncOverlayGeometry();
@@ -199,6 +226,8 @@ void App::applyWindowMode() {
         clearNotification();
     }
 
+    updateChromeVisibility();
+
     if (visible) {
         XPLMBringWindowToFront(window);
     }
@@ -232,6 +261,11 @@ void App::showBrowser(std::string url) {
     }
 
     XPLMBringWindowToFront(window);
+    updateChromeVisibility();
+    if (titleWindow && footerWindow && usesChrome()) {
+        XPLMBringWindowToFront(titleWindow);
+        XPLMBringWindowToFront(footerWindow);
+    }
     // Keep a toast that is already up on top of the window just raised.
     if (notificationOverlay && overlayWindow) {
         XPLMBringWindowToFront(overlayWindow);
@@ -246,9 +280,14 @@ void App::hideBrowser() {
     browser->visibilityWillChange(false);
     visible = false;
 
+    windowDragActive = false;
+    windowResizeActive = false;
+    closeButtonPressed = false;
+
     if (window) {
         XPLMSetWindowIsVisible(window, 0);
     }
+    updateChromeVisibility();
 }
 
 void App::showNotification(Notification *aNotification) {
@@ -406,6 +445,14 @@ void App::registerWindow() {
         XPLMDestroyWindow(overlayWindow);
         overlayWindow = nullptr;
     }
+    if (titleWindow) {
+        XPLMDestroyWindow(titleWindow);
+        titleWindow = nullptr;
+    }
+    if (footerWindow) {
+        XPLMDestroyWindow(footerWindow);
+        footerWindow = nullptr;
+    }
     if (window) {
         XPLMDestroyWindow(window);
         window = nullptr;
@@ -418,6 +465,11 @@ void App::registerWindow() {
     float screenHeight = fabs(winTop - winBot);
     int width = config.width > 0 ? config.width : defaultWindowWidth;
     int height = config.height > 0 ? config.height : defaultWindowHeight;
+    // The manifest size is the page. Titleless chrome sits outside it, so the
+    // whole frame is centred and the page placed below the title bar.
+    int chromeTop = config.window_titleless ? titleBarHeight : 0;
+    int chromeBottom = config.window_titleless ? resizeFooterHeight : 0;
+    int frameHeight = height + chromeTop + chromeBottom;
 
     // Zero-initialised: from SDK 4.4.0 a NULL callback means "not interested",
     // and a browser window wants none of the input callbacks -- X-Plane routes
@@ -426,12 +478,14 @@ void App::registerWindow() {
     params.structSize = sizeof(params);
     params.left = (int)(winLeft + (screenWidth - width) / 2);
     params.right = params.left + width;
-    params.top = (int)(winTop - (screenHeight - height) / 2);
+    params.top = (int)(winTop - (screenHeight - frameHeight) / 2) - chromeTop;
     params.bottom = params.top - height;
     params.visible = 0;
     params.refcon = this;
     params.layer = xplm_WindowLayerFloatingWindows;
-    params.decorateAsFloatingWindow = xplm_WindowDecorationRoundRectangle;
+    // Self-decorated-resizable gives a titleless window X-Plane's edge resizing
+    // without its title bar; the chrome windows supply the rest.
+    params.decorateAsFloatingWindow = config.window_titleless ? xplm_WindowDecorationSelfDecoratedResizable : xplm_WindowDecorationRoundRectangle;
     params.contentType = xplm_WindowContentTypeBrowser;
     params.browserLoadFinishedFunc = [](XPLMWindowID inWindow, const char *inURL, void *inRefcon) {
         App *app = static_cast<App*>(inRefcon);
@@ -458,7 +512,9 @@ void App::registerWindow() {
         return;
     }
 
-    XPLMSetWindowTitle(window, name.c_str());
+    if (!config.window_titleless) {
+        XPLMSetWindowTitle(window, name.c_str());
+    }
     XPLMSetWindowResizingLimits(
         window,
         (std::max)(static_cast<int>(config.minimum_width), minimumContentWidth),
@@ -468,6 +524,9 @@ void App::registerWindow() {
 
     browser->attach(window);
     registerOverlayWindow();
+    if (config.window_titleless) {
+        registerChromeWindows();
+    }
     applyWindowMode();
     XPLMSetWindowIsVisible(window, 0);
 }
@@ -501,6 +560,300 @@ void App::registerOverlayWindow() {
     }
 
     XPLMSetWindowIsVisible(overlayWindow, 0);
+}
+
+void App::registerChromeWindows() {
+    // Plain OpenGL windows with no decoration of X-Plane's: they draw the bars
+    // themselves and own every click inside their bounds. Placed by
+    // syncChromeGeometry, which keeps them on the browser window's edges.
+    XPLMCreateWindow_t params = {};
+    params.structSize = sizeof(params);
+    params.left = 0;
+    params.top = titleBarHeight;
+    params.right = 1;
+    params.bottom = 0;
+    params.visible = 0;
+    params.refcon = this;
+    params.layer = xplm_WindowLayerFloatingWindows;
+    params.decorateAsFloatingWindow = xplm_WindowDecorationNone;
+    params.contentType = xplm_WindowContentTypeOpenGL;
+
+    params.drawWindowFunc = [](XPLMWindowID inWindowID, void *inRefcon) {
+        static_cast<App*>(inRefcon)->drawTitleBar();
+    };
+    params.handleMouseClickFunc = [](XPLMWindowID inWindowID, int x, int y, XPLMMouseStatus status, void *inRefcon) -> int {
+        return static_cast<App*>(inRefcon)->handleTitleBarClick(x, y, status);
+    };
+    params.handleCursorFunc = [](XPLMWindowID inWindowID, int x, int y, void *inRefcon) -> XPLMCursorStatus {
+        return static_cast<App*>(inRefcon)->titleBarCursor(x, y);
+    };
+    titleWindow = XPLMCreateWindowEx(&params);
+
+    params.top = resizeFooterHeight;
+    params.drawWindowFunc = [](XPLMWindowID inWindowID, void *inRefcon) {
+        static_cast<App*>(inRefcon)->drawFooter();
+    };
+    params.handleMouseClickFunc = [](XPLMWindowID inWindowID, int x, int y, XPLMMouseStatus status, void *inRefcon) -> int {
+        return static_cast<App*>(inRefcon)->handleFooterClick(x, y, status);
+    };
+    params.handleCursorFunc = [](XPLMWindowID inWindowID, int x, int y, void *inRefcon) -> XPLMCursorStatus {
+        return static_cast<App*>(inRefcon)->footerCursor(x, y);
+    };
+    footerWindow = XPLMCreateWindowEx(&params);
+
+    if (!titleWindow || !footerWindow) {
+        debug("Could not create the window chrome for app '%s'.\n", id.c_str());
+        return;
+    }
+
+    syncChromeGeometry();
+}
+
+bool App::usesChrome() const {
+    if (!window || !titleWindow || !footerWindow) {
+        return false;
+    }
+
+    return Dataref::getInstance()->getCached<int>("sim/graphics/VR/enabled") == 0;
+}
+
+void App::updateChromeVisibility() {
+    if (!titleWindow || !footerWindow) {
+        return;
+    }
+
+    int wanted = (visible && usesChrome()) ? 1 : 0;
+    if (wanted) {
+        syncChromeGeometry();
+    }
+    if (XPLMGetWindowIsVisible(titleWindow) != wanted) {
+        XPLMSetWindowIsVisible(titleWindow, wanted);
+    }
+    if (XPLMGetWindowIsVisible(footerWindow) != wanted) {
+        XPLMSetWindowIsVisible(footerWindow, wanted);
+    }
+}
+
+void App::syncChromeGeometry() {
+    if (!window || !titleWindow || !footerWindow) {
+        return;
+    }
+
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(window, &left, &top, &right, &bottom);
+
+    auto place = [](XPLMWindowID chrome, int l, int t, int r, int b) {
+        int cl, ct, cr, cb;
+        XPLMGetWindowGeometry(chrome, &cl, &ct, &cr, &cb);
+        if (cl != l || ct != t || cr != r || cb != b) {
+            XPLMSetWindowGeometry(chrome, l, t, r, b);
+        }
+    };
+
+    place(titleWindow, left, top + titleBarHeight, right, top);
+    place(footerWindow, left, bottom, right, bottom - resizeFooterHeight);
+}
+
+void App::setViewportFromWindow(XPLMWindowID aWindow) {
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(aWindow, &left, &top, &right, &bottom);
+    setViewport(left, bottom, static_cast<unsigned short>((std::max)(1, right - left)), static_cast<unsigned short>((std::max)(1, top - bottom)));
+}
+
+// A real bar: opaque, lighter than the page, and closed off by a rule -- the
+// same three things every window manager uses to say "this strip is not the
+// document". The whole bar except the close button is the drag region.
+void App::drawTitleBar() {
+    if (!visible || !usesChrome()) {
+        return;
+    }
+
+    App::current = this;
+    // Every frame, so the bar follows X-Plane's own edge resizing.
+    syncChromeGeometry();
+    setViewportFromWindow(titleWindow);
+
+    float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
+    XPLMSetGraphicsState(0, 0, 0, 0, 1, 0, 0);
+
+    glColor4f(0.105f, 0.125f, 0.15f, opacity * 0.94f);
+    Drawing::DrawRect(0.0f, 0.0f, 1.0f, 1.0f);
+
+    // The bar's own bottom row of pixels, so the boundary reads as a rule.
+    glColor4f(0.95f, 0.97f, 1.0f, 0.16f);
+    Drawing::DrawRect(0.0f, 0.0f, 1.0f, 1.0f / viewport.height);
+
+    // Close button: an "x" centred in its square at the bar's left end.
+    float centreX = (closeButtonSize * 0.5f) / viewport.width;
+    float halfX = 4.5f / viewport.width;
+    float halfY = 4.5f / viewport.height;
+    glColor4f(0.82f, 0.87f, 0.93f, 0.9f);
+    Drawing::DrawLine(centreX - halfX, 0.5f - halfY, centreX + halfX, 0.5f + halfY, 1.5f);
+    Drawing::DrawLine(centreX - halfX, 0.5f + halfY, centreX + halfX, 0.5f - halfY, 1.5f);
+
+    if (!name.empty()) {
+        // DrawText centres on x, so the left edge of the string is the inset
+        // and the x passed is the inset plus half the width.
+        float inset = static_cast<float>(closeButtonSize + 6) / viewport.width;
+        float textWidth = Drawing::TextWidth(name);
+        Drawing::DrawText(name, inset + textWidth / 2.0f, 0.5f, 1.0f, { 0.82f, 0.87f, 0.93f });
+    }
+
+    App::current = nullptr;
+}
+
+// The footer exists so the grip has somewhere to live that is not on top of
+// the page.
+void App::drawFooter() {
+    if (!visible || !usesChrome()) {
+        return;
+    }
+
+    App::current = this;
+    syncChromeGeometry();
+    setViewportFromWindow(footerWindow);
+
+    float opacity = std::clamp(config.window_opacity, 0.2f, 1.0f);
+    XPLMSetGraphicsState(0, 0, 0, 0, 1, 0, 0);
+
+    glColor4f(0.105f, 0.125f, 0.15f, opacity * 0.94f);
+    Drawing::DrawRect(0.0f, 0.0f, 1.0f, 1.0f);
+
+    glColor4f(0.95f, 0.97f, 1.0f, 0.16f);
+    Drawing::DrawRect(0.0f, 1.0f - (1.0f / viewport.height), 1.0f, 1.0f);
+
+    // Three stacked diagonals: the grip every desktop toolkit draws, so it
+    // needs no label to be understood.
+    float right = 1.0f - (5.0f / viewport.width);
+    float bottom = 3.0f / viewport.height;
+    float span = 9.0f;
+
+    glColor4f(0.95f, 0.97f, 1.0f, 0.55f);
+    for (int line = 0; line < 3; ++line) {
+        float offset = line * 4.0f;
+        float x1 = right - (span - offset) / viewport.width;
+        float y2 = bottom + (span - offset) / viewport.height;
+        Drawing::DrawLine(x1, bottom, right, y2, 1.5f);
+    }
+
+    App::current = nullptr;
+}
+
+bool App::isCloseButtonPoint(int x, int y) const {
+    if (!titleWindow) {
+        return false;
+    }
+
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(titleWindow, &left, &top, &right, &bottom);
+    return x >= left && x < left + closeButtonSize && y >= bottom && y <= top;
+}
+
+bool App::isResizeGripPoint(int x, int y) const {
+    if (!footerWindow) {
+        return false;
+    }
+
+    int left, top, right, bottom;
+    XPLMGetWindowGeometry(footerWindow, &left, &top, &right, &bottom);
+    return x > right - resizeGripSize && x <= right && y >= bottom && y <= top;
+}
+
+int App::handleTitleBarClick(int x, int y, XPLMMouseStatus status) {
+    if (!visible || !window) {
+        return 0;
+    }
+
+    if (status == xplm_MouseDown) {
+        if (isCloseButtonPoint(x, y)) {
+            closeButtonPressed = true;
+            return 1;
+        }
+
+        XPLMGetWindowGeometry(window, &dragLeft, &dragTop, &dragRight, &dragBottom);
+        dragStartX = x;
+        dragStartY = y;
+        windowDragActive = true;
+        XPLMBringWindowToFront(window);
+        XPLMBringWindowToFront(titleWindow);
+        XPLMBringWindowToFront(footerWindow);
+        return 1;
+    }
+
+    if (status == xplm_MouseDrag && windowDragActive) {
+        int deltaX = x - dragStartX;
+        int deltaY = y - dragStartY;
+        XPLMSetWindowGeometry(window, dragLeft + deltaX, dragTop + deltaY, dragRight + deltaX, dragBottom + deltaY);
+        syncChromeGeometry();
+        return 1;
+    }
+
+    if (status == xplm_MouseUp) {
+        // Closing on release, and only if the release is still on the button,
+        // is what lets a user change their mind by dragging off it.
+        bool close = closeButtonPressed && isCloseButtonPoint(x, y);
+        closeButtonPressed = false;
+        windowDragActive = false;
+        if (close) {
+            hideBrowser();
+        }
+        return 1;
+    }
+
+    return 1;
+}
+
+int App::handleFooterClick(int x, int y, XPLMMouseStatus status) {
+    if (!visible || !window) {
+        return 0;
+    }
+
+    if (status == xplm_MouseDown) {
+        if (!isResizeGripPoint(x, y)) {
+            return 1;
+        }
+
+        XPLMGetWindowGeometry(window, &dragLeft, &dragTop, &dragRight, &dragBottom);
+        dragStartX = x;
+        dragStartY = y;
+        windowResizeActive = true;
+        return 1;
+    }
+
+    if (status == xplm_MouseDrag && windowResizeActive) {
+        // Bottom-right grip: the left and top edges are the anchor, so only the
+        // right and bottom move and the window does not walk across the screen.
+        int right = dragRight + (x - dragStartX);
+        int bottom = dragBottom + (y - dragStartY);
+
+        // The same floor XPLMSetWindowResizingLimits enforces for X-Plane's own
+        // edge handles, applied here because we set the geometry directly.
+        int minimumWidth = (std::max)(static_cast<int>(config.minimum_width), minimumContentWidth);
+        if (right - dragLeft < minimumWidth) {
+            right = dragLeft + minimumWidth;
+        }
+        if (dragTop - bottom < minimumContentHeight) {
+            bottom = dragTop - minimumContentHeight;
+        }
+
+        XPLMSetWindowGeometry(window, dragLeft, dragTop, right, bottom);
+        syncChromeGeometry();
+        return 1;
+    }
+
+    if (status == xplm_MouseUp) {
+        windowResizeActive = false;
+    }
+
+    return 1;
+}
+
+XPLMCursorStatus App::titleBarCursor(int x, int y) {
+    return isCloseButtonPoint(x, y) ? xplm_CursorButton : xplm_CursorDefault;
+}
+
+XPLMCursorStatus App::footerCursor(int x, int y) {
+    return (windowResizeActive || isResizeGripPoint(x, y)) ? xplm_CursorFourArrows : xplm_CursorDefault;
 }
 
 AppConfiguration App::defaultConfig() {

@@ -22,6 +22,8 @@ notification_corner: bottom-right
 | `width` | integer | `1024` | Initial window width in pixels. |
 | `height` | integer | `768` | Initial window height in pixels. |
 | `console_logging` | boolean | `true` | Forward `console.log`/`warn`/`error` to X-Plane's `Log.txt`. Set to `false` for noisy apps. |
+| `window_titleless` | boolean | `true` | Use SkyScript's title bar and resize grip instead of X-Plane's title bar. See [Window chrome](#window-chrome). |
+| `window_opacity` | float | `0.96` | Page opacity for titleless windows, `0.2`–`1`. Use `1` for a fully solid window. |
 | `notification_corner` | string | `top-right` | Default notification location. Values: `top-left`, `top-right`, `bottom-left`, `bottom-right`. Alias: `notification_location`. |
 | `notification_timeout` | float | `5` | Default auto-dismiss timeout in seconds. Use `0` to keep notifications visible until dismissed. Alias: `notification_timeout_seconds`. |
 | `notification_opacity` | float | `0.78` | Default notification panel opacity. |
@@ -33,7 +35,22 @@ Local apps are loaded from their folder as a `file://` URL. Build them with rela
 
 ## Window chrome
 
-Every app window uses X-Plane's own title bar, close button and edge resizing. Since SDK 4.4.0 X-Plane draws browser windows itself, so there is no chrome for SkyScript to draw; the minimum size is 640×480.
+With `window_titleless` (the default), SkyScript frames the window itself:
+
+| Part | Height | Contains |
+|------|--------|----------|
+| Title bar | 28px | The close button, the app `name`, and the drag region |
+| Page | `height` | Your app |
+| Footer | 16px | The resize grip, at the right |
+
+X-Plane draws browser windows itself and nothing can be drawn into them, so the title bar and footer are two small windows of SkyScript's own, glued to the page's top and bottom edges. **They sit outside the page:** `width` and `height` are the size of your app, and nothing SkyScript draws covers your content.
+
+- Drag the title bar to move the window. The close button hides it.
+- Drag the grip to resize, anchored at the top-left corner. X-Plane also resizes the window from its edges. Both clamp to a 640×480 page (or `minimum_width`).
+- `window_opacity` is applied to the page as CSS (`html { opacity }`), because X-Plane has no opacity setting for browser windows. The bars use it too.
+- In VR the chrome is hidden and X-Plane frames the window.
+
+With `window_titleless: false`, X-Plane draws its own title bar and owns resizing, `width`/`height` are the window size, and `window_opacity` is ignored.
 
 ## Removed options
 
@@ -45,8 +62,6 @@ These keys are still accepted so existing manifests keep working, but have no ef
 | `framerate` | CEF rendering frame rate |
 | `scroll_speed` | Scroll sensitivity multiplier |
 | `forced_language` | Browser `Accept-Language` |
-| `window_titleless` | SkyScript-drawn title bar and resize grip |
-| `window_opacity` | Opacity of the titleless window |
 
 ## Minimal Manifests
 

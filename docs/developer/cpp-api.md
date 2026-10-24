@@ -99,12 +99,14 @@ SkyScriptAppConfig skyscript_default_config(void);
 
 Returns a default-initialized `SkyScriptAppConfig` struct. Start from this rather than zero-initializing: a zeroed struct reads as "silent notifications, zero timeout", which are choices rather than defaults.
 
-`audio_muted`, `scroll_speed`, `forced_language`, `framerate`, `window_titleless` and `window_opacity` are kept so the struct's layout does not change, but have no effect: X-Plane owns the browser and the window chrome. See [Removed options](./manifest.md#removed-options).
+`audio_muted`, `scroll_speed`, `forced_language` and `framerate` are kept so the struct's layout does not change, but have no effect: X-Plane owns the browser. See [Removed options](./manifest.md#removed-options).
 
-Besides the browser settings, the struct carries the defaults for notifications raised on the window:
+Besides the browser settings, the struct carries the window's chrome and the defaults for notifications raised on it:
 
 | Field | Default | Description |
 |-------|---------|-------------|
+| `window_titleless` | `1` | SkyScript's own title bar and resize grip instead of X-Plane's title bar. See [Window chrome](./manifest.md#window-chrome). |
+| `window_opacity` | `0.96` | Page opacity for titleless windows. `0` means the default. |
 | `notification_corner` | `SKYSCRIPT_NOTIFICATION_TOP_RIGHT` | Corner notifications slide from. |
 | `notification_timeout` | `5` | Seconds before auto-dismiss. `0` keeps notifications up until dismissed. |
 | `notification_opacity` | `0.78` | Panel opacity. `0` means the default. |

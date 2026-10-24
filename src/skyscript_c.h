@@ -35,7 +35,7 @@ typedef enum {
  * rather than defaults.
  *
  * Fields marked "unused" are kept so the struct's layout does not change, but
- * have no effect: X-Plane owns the browser and the window chrome. */
+ * have no effect: X-Plane owns the browser. */
 typedef struct {
     const char* homepage;        /* URL to load, or NULL for default */
     int audio_muted;             /* Unused */
@@ -48,8 +48,10 @@ typedef struct {
     unsigned short width;        /* Initial window width (0 = default 1024) */
     unsigned short height;       /* Initial window height (0 = default 768) */
     int console_logging;         /* 1 = forward console.log to Log.txt */
-    int window_titleless;        /* Unused: windows always use X-Plane's title bar */
-    float window_opacity;        /* Unused */
+    /* Window chrome. Titleless windows get SkyScript's title bar and resize
+       grip, drawn in windows glued above and below the page. */
+    int window_titleless;        /* 1 = SkyScript chrome, 0 = X-Plane title bar */
+    float window_opacity;        /* Page opacity for titleless windows; 0 = default */
     /* Defaults for notifications raised on this window. Each is overridable per
        notification via SkyScriptNotificationOptions. */
     SkyScriptNotificationCorner notification_corner;
