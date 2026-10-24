@@ -1,4 +1,4 @@
-// Package skyscript provides Go bindings for the SkyScript CEF browser library
+// Package skyscript provides Go bindings for the SkyScript browser window library
 // for X-Plane 12 plugins.
 //
 // Usage:
@@ -132,11 +132,11 @@ type AppConfig struct {
 	Height         uint16
 	ConsoleLogging bool
 
-	// WindowTitleless draws the window's own chrome -- a translucent background
-	// and a drag strip along the top -- instead of an X-Plane title bar.
+	// AudioMuted, ScrollSpeed, ForcedLanguage, Framerate, WindowTitleless and
+	// WindowOpacity have no effect: X-Plane owns the browser and the window
+	// chrome. They are kept so existing code still compiles.
 	WindowTitleless bool
-	// WindowOpacity is the window background opacity. Zero means the default.
-	WindowOpacity float32
+	WindowOpacity   float32
 
 	// Defaults for notifications raised on this window. Each is overridable per
 	// notification via NotificationOptions.

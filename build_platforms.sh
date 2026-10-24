@@ -8,7 +8,6 @@ MAC_PLUGIN_COPY_TARGET="/Volumes/storage/X-Plane 12/Resources/plugins/SkyScript/
 PROJECT_NAME=$(sed -n 's/^#define PRODUCT_NAME "\(.*\)"/\1/p' src/include/config.h | head -n 1)
 VERSION=$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/include/config.h | head -n 1)
 XPLANE_SDK_ROOT="${XPLANE_SDK_ROOT:-$DEFAULT_XPLANE_SDK_ROOT}"
-SKYSCRIPT_PLUGIN_LOCAL_CEF="${SKYSCRIPT_PLUGIN_LOCAL_CEF:-0}"
 JOBS=$(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 PLATFORMS=""
 XPLANE_VERSION=12
@@ -108,33 +107,6 @@ copy_artifact() {
     mkdir -p "$(dirname "$destination_path")"
     cp "$source_path" "$destination_path"
     printf 'Copied %s -> %s\n' "$source_path" "$destination_path"
-}
-
-copy_runtime_files() {
-    platform=$1
-    destination_dir=$2
-    platform_dir="lib/${platform}_x64"
-
-    if [ "$SKYSCRIPT_PLUGIN_LOCAL_CEF" != "1" ]; then
-        printf 'Skipping %s CEF bundle; SkyScript will use the X-Plane runtime.\n' "$platform"
-        return 0
-    fi
-
-    if [ -d "${platform_dir}/cef" ]; then
-        mkdir -p "$destination_dir"
-        cp -r "${platform_dir}/cef" "$destination_dir/cef"
-        printf 'Bundled CEF tree: %s -> %s\n' "${platform_dir}/cef" "$destination_dir"
-    else
-        printf 'Warning: CEF tree not found for %s at %s\n' "$platform" "${platform_dir}/cef"
-    fi
-
-    if [ -d "${platform_dir}/dist_${XPLANE_VERSION}" ]; then
-        mkdir -p "$destination_dir"
-        cp -r "${platform_dir}/dist_${XPLANE_VERSION}"/* "$destination_dir/"
-        printf 'Bundled CEF runtime files: %s -> %s\n' "${platform_dir}/dist_${XPLANE_VERSION}" "$destination_dir"
-    else
-        printf 'Warning: CEF runtime files not found for %s at %s\n' "$platform" "${platform_dir}/dist_${XPLANE_VERSION}"
-    fi
 }
 
 run_additional_copies() {
@@ -238,7 +210,6 @@ printf 'Building %s.xpl version %s\n' "$PROJECT_NAME" "$VERSION"
 printf 'Platforms: %s\n' "$PLATFORMS"
 printf 'X-Plane version: %s\n' "$XPLANE_VERSION"
 printf 'SDK root: %s\n' "$XPLANE_SDK_ROOT"
-printf 'Plugin-local CEF: %s\n' "$SKYSCRIPT_PLUGIN_LOCAL_CEF"
 printf 'Parallel jobs: %s\n' "$JOBS"
 printf 'Clean build: %s\n' "$CLEAN_BUILD"
 printf 'Package extra files: %s\n\n' "$EXTRA_FILES"
@@ -254,9 +225,7 @@ if has_platform mac; then
     [ -d "$XPLANE_SDK_ROOT/CHeaders/Wrappers" ] || die "Missing X-Plane Wrappers headers at $XPLANE_SDK_ROOT"
     [ -f "$XPLANE_SDK_ROOT/Libraries/Mac/XPLM.framework/XPLM" ] || die "Missing XPLM.framework at $XPLANE_SDK_ROOT"
     [ -f "$XPLANE_SDK_ROOT/Libraries/Mac/XPWidgets.framework/XPWidgets" ] || die "Missing XPWidgets.framework at $XPLANE_SDK_ROOT"
-    [ -d "lib/mac_x64/cef/include" ] || die "Missing CEF headers under lib/mac_x64/cef"
-    [ -f "lib/mac_x64/cef/Release/Chromium Embedded Framework.framework/Chromium Embedded Framework" ] || die "Missing macOS CEF framework under lib/mac_x64/cef/Release"
-    [ -f "lib/mac_x64/cef/libcef_dll_wrapper.a" ] || die "Missing lib/mac_x64/cef/libcef_dll_wrapper.a"
+    grep -q XPLMReturnString "$XPLANE_SDK_ROOT/CHeaders/XPLM/XPLMUtilities.h" || die "The X-Plane SDK at $XPLANE_SDK_ROOT is older than 4.4.0, which SkyScript needs for browser windows"
 fi
 
 for platform in $PLATFORMS; do
@@ -265,10 +234,10 @@ for platform in $PLATFORMS; do
     if [ "$platform" = "lin" ]; then
         docker build -t gcc-cmake -f ./docker/Dockerfile.linux . &&
         docker run --user "$(id -u):$(id -g)" --rm -e XPLANE_SDK_ROOT="$XPLANE_SDK_ROOT" -v "$(pwd):/src" -w /src gcc-cmake:latest bash -c "\
-        cmake -DCMAKE_CXX_FLAGS='-march=x86-64' -DCMAKE_TOOLCHAIN_FILE=toolchain-$platform.cmake -DXPLANE_VERSION=$XPLANE_VERSION -DXPLANE_SDK_ROOT=\"\$XPLANE_SDK_ROOT\" -DSKYSCRIPT_PLUGIN_LOCAL_CEF=$SKYSCRIPT_PLUGIN_LOCAL_CEF -Bbuild/$platform -H. && \
+        cmake -DCMAKE_CXX_FLAGS='-march=x86-64' -DCMAKE_TOOLCHAIN_FILE=toolchain-$platform.cmake -DXPLANE_VERSION=$XPLANE_VERSION -DXPLANE_SDK_ROOT=\"\$XPLANE_SDK_ROOT\" -Bbuild/$platform -H. && \
         cmake --build build/$platform --parallel \$(nproc)"
     else
-        cmake -DCMAKE_TOOLCHAIN_FILE=toolchain-"$platform".cmake -DCMAKE_OSX_ARCHITECTURES=arm64 -DXPLANE_VERSION="$XPLANE_VERSION" -DXPLANE_SDK_ROOT="$XPLANE_SDK_ROOT" -DSKYSCRIPT_PLUGIN_LOCAL_CEF="$SKYSCRIPT_PLUGIN_LOCAL_CEF" -Bbuild/"$platform" -H.
+        cmake -DCMAKE_TOOLCHAIN_FILE=toolchain-"$platform".cmake -DCMAKE_OSX_ARCHITECTURES=arm64 -DXPLANE_VERSION="$XPLANE_VERSION" -DXPLANE_SDK_ROOT="$XPLANE_SDK_ROOT" -Bbuild/"$platform" -H.
         cmake --build build/"$platform" --parallel "$JOBS"
     fi
 
@@ -307,7 +276,7 @@ mkdir -p "$LIB_DIST/include"
 cp src/skyscript_c.h "$LIB_DIST/include/"
 cp LICENSE "$LIB_DIST/"
 
-# Copy shared library and runtime support for each built platform
+# Copy shared library for each built platform
 for platform in $PLATFORMS; do
     if [ "$platform" = "win" ]; then
         lib_file="build/$platform/SkyScriptLib.dll"
@@ -333,7 +302,6 @@ for platform in $PLATFORMS; do
             printf 'Bundled import library: %s -> %s\n' "$import_lib" "${platform}_x64"
         fi
 
-        copy_runtime_files "$platform" "$LIB_DIST/lib/${platform}_x64"
     else
         printf 'Warning: shared library not found for %s at %s\n' "$platform" "$lib_file"
     fi

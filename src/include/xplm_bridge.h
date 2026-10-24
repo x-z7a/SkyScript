@@ -5,20 +5,19 @@
 #include <cstddef>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <include/cef_browser.h>
+#include <XPLMDisplay.h>
 
 struct XplmRequest {
-    std::string action;      // "getDataref", "setDataref", "executeCommand", "postMessage", "showNotification", "dismissNotification", "fsReadFile", "fsWriteFile", "fsListDir", "fsExists"
+    std::string action;      // "getDataref", "setDataref", "executeCommand", "postMessage", "showNotification", "dismissNotification", "fsReadFile", "fsWriteFile", "fsListDir", "fsExists", "consoleLog"
     std::string ref;         // dataref path or command path
     std::string value;       // for setDataref: stringified value; for fs: content/path
     std::string valueType;   // "int", "float", "double", "string"
     std::string channel;     // for message passing: channel name
     std::string payload;     // for message passing: JSON payload
-    int callbackId;
-    CefRefPtr<CefBrowser> browser;
 };
 
 // Callback type for handling messages from JS.
@@ -32,6 +31,14 @@ struct PendingPost {
     std::string payload;
 };
 
+// The plugin side of window.skyscript.
+//
+// Requests arrive through X-Plane's browser-function bridge: the injected API
+// calls xplane.skyscript({action, ...}), X-Plane hands us the argument as JSON
+// on the main thread, and the JSON we hand back through XPLMReturnString
+// resolves the page's Promise.
+// That reply is always an envelope, {"ok":true,"value":...} or
+// {"ok":false,"error":"..."}, which the injected API turns into resolve/reject.
 class XplmBridge {
 private:
     // Bound on the queue a plugin can fill from its own thread. Generous enough
@@ -39,54 +46,48 @@ private:
     // posting in a loop with a hidden window cannot grow it without limit.
     static constexpr std::size_t kMaxPendingPosts = 1024;
 
-    std::mutex mutex;
-    std::vector<XplmRequest> pendingRequests;
-
     std::mutex handlersMutex;
     std::unordered_map<std::string, MessageHandler> messageHandlers;
 
     std::mutex postsMutex;
     std::vector<PendingPost> pendingPosts;
 
-    CefRefPtr<CefBrowser> lastBrowser;
+    XPLMWindowID window = nullptr;
     // Readable from any thread, so postMessage can tell whether there is a
-    // browser to post to without touching the refcounted pointer itself.
-    std::atomic<bool> browserReady{false};
+    // window to post to without touching the window itself.
+    std::atomic<bool> windowReady{false};
 
-    void handleGetDataref(const XplmRequest& req);
-    void handleSetDataref(const XplmRequest& req);
-    void handleExecuteCommand(const XplmRequest& req);
-    void handlePostMessage(const XplmRequest& req);
-    void handleShowNotification(const XplmRequest& req);
-    void handleDismissNotification(const XplmRequest& req);
-    void handleFsReadFile(const XplmRequest& req);
-    void handleFsWriteFile(const XplmRequest& req);
-    void handleFsListDir(const XplmRequest& req);
-    void handleFsExists(const XplmRequest& req);
+    // Each returns the JSON text of the value the page's Promise resolves to,
+    // or nothing for a call that resolves to undefined. Failures throw, and the
+    // message becomes the rejection.
+    std::optional<std::string> dispatch(const XplmRequest& req);
+    std::optional<std::string> handlePostMessage(const XplmRequest& req);
     void deliverPost(const PendingPost& post);
-    void respond(const XplmRequest& req, const std::string& jsValue, bool isError = false);
-
-    static std::string escapeJsString(const std::string& str);
-    bool isPathAllowed(const std::string& path) const;
 
 public:
-    void enqueueRequest(const XplmRequest& req);
-    void processPendingRequests();
+    // The page calls this as xplane.skyscript(request).
+    static constexpr const char* functionName = "skyscript";
+
+    // Answer one request from the page with its JSON envelope. The caller
+    // hands it to X-Plane through XPLMReturnString.
+    std::string handleRequest(const char* json);
+
+    // Deliver queued plugin-to-JS messages. Main thread only.
+    void processPendingPosts();
 
     // Register a handler for messages from JS on a given channel.
     void onMessage(const std::string& channel, MessageHandler handler);
 
     // Push a message from the plugin to JS on a given channel.
     // Safe to call from any thread: the message is queued and delivered on the
-    // next processPendingRequests, which runs on the thread that pumps CEF.
-    // The payload must be a JSON document; it is parsed, not evaluated.
+    // next processPendingPosts, which runs on the main thread from the flight
+    // loop. The payload must be a JSON document; it is parsed, not evaluated.
     void postMessage(const std::string& channel, const std::string& payload);
 
-    // Set the browser instance reference for posting messages to JS.
-    void setBrowser(CefRefPtr<CefBrowser> browser);
+    // The browser window to inject into, or nullptr once it is gone.
+    void setWindow(XPLMWindowID window);
 
-    static std::string getInjectionScript();
-    static XplmRequest parseRequestUrl(const std::string& url, CefRefPtr<CefBrowser> browser);
+    static std::string getInjectionScript(bool consoleLogging);
 };
 
 #endif

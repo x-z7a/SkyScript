@@ -186,7 +186,7 @@ Multiple listeners can be registered on the same channel. They are called in reg
 
 SkyScript can show a native toast inside the app window. Notifications slide in from a configurable corner, use a translucent panel, and can auto-dismiss after a timeout.
 
-A notification is shown whether or not the app window is open: with the app closed, SkyScript puts the window on screen carrying the toast alone and takes it away again afterwards. In that state the toast is presentation only — every click passes through to the simulator, so `dismissible` is forced off and a `timeoutSeconds` of `0` is replaced with the default rather than waiting forever for a dismissal that cannot arrive. It also requires a self-decorated window (`window_titleless`, the default); titled apps show notifications only while open. See the [C API notes](./cpp-api.md#notifications-with-the-app-closed) for the reasoning.
+A notification is shown whether or not the app window is open. It is drawn in a transparent overlay window that sits over the app window (or where the app window would be, when it is closed). The toast is presentation only — every click passes through it, so `dismissible` is forced off and a `timeoutSeconds` of `0` is replaced with the default rather than waiting forever for a dismissal that cannot arrive. Notifications are not shown in VR; they are written to `Log.txt` instead. See the [C API notes](./cpp-api.md#notifications-with-the-app-closed) for the reasoning.
 
 #### `notification.show(options)`
 
@@ -356,11 +356,11 @@ if (await skyscript.fs.exists('/path/to/plugin/profiles/custom.yaml')) {
 All `console.log()`, `console.warn()`, and `console.error()` calls from your app are forwarded to X-Plane's developer console (`Log.txt`). Messages are prefixed with the app name:
 
 ```
-[SkyScript] [My App] [LOG] Hello from my app (http://localhost/index.js:42)
-[SkyScript] [My App] [ERROR] Something went wrong (http://localhost/index.js:55)
+[SkyScript] [My App] [LOG] Hello from my app
+[SkyScript] [My App] [ERROR] Something went wrong
 ```
 
-This makes it easy to debug your app without needing browser DevTools.
+Uncaught errors and unhandled promise rejections are forwarded as `[ERROR]` too. Forwarding starts once the page has finished loading and SkyScript has injected its API, so anything logged earlier only reaches the page's own console. This makes it easy to debug your app without browser DevTools, which X-Plane's browser windows do not offer.
 
 ---
 
@@ -368,13 +368,14 @@ This makes it easy to debug your app without needing browser DevTools.
 
 Understanding the communication flow helps when debugging:
 
-1. Your JavaScript calls a method like `getDataref("sim/time/zulu_time_sec")`.
-2. The method creates a Promise and stores its resolve/reject callbacks with a unique ID.
-3. A hidden `<iframe>` navigates to `skyscript://xplm/getDataref?ref=sim/time/zulu_time_sec&callbackId=1`.
-4. The native plugin intercepts this URL in the CEF resource handler (IO thread) and enqueues the request.
-5. On X-Plane's main thread (flight loop), the plugin dequeues the request and executes the XPLM SDK call.
-6. The result is sent back by calling `ExecuteJavaScript("window.skyscript._resolve(1, 42345.128906)")`.
-7. Your Promise resolves with the value.
+1. X-Plane renders the app in a browser window (`xplm_WindowContentTypeBrowser`). When the page finishes loading, SkyScript injects the `window.skyscript` API.
+2. Your JavaScript calls a method like `getDataref("sim/time/zulu_time_sec")`.
+3. The method calls `xplane.skyscript({ action: "getDataref", ref: "sim/time/zulu_time_sec" })`, a browser function SkyScript registers on its window with `XPLMWindowAddBrowserFunction`.
+4. X-Plane hands the request to the plugin as JSON, on its main thread, and the plugin makes the XPLM SDK call.
+5. The plugin replies `{"ok": true, "value": 42345.13}` (or `{"ok": false, "error": "..."}`), which X-Plane resolves the call's Promise with.
+6. `getDataref` unwraps the reply and your Promise resolves with the value, or rejects with the error.
+
+Messages from the plugin (`onMessage`) travel the other way through `XPLMWindowInjectScript`, from the flight loop.
 
 All XPLM calls happen on X-Plane's main thread, so there are no threading issues.
 

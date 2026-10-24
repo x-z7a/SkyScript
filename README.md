@@ -1,10 +1,10 @@
 # SkyScript
 
-SkyScript is a **reusable C/C++ library** for rendering web content (HTML/React apps) inside X-Plane 12 floating windows using CEF (Chromium Embedded Framework). It provides a JavaScript API bridge for apps to interact with X-Plane datarefs, native slide-out notifications, and both desktop and VR modes.
+SkyScript is a **reusable C/C++ library** for rendering web content (HTML/React apps) inside X-Plane 12 floating windows using X-Plane's built-in browser windows (`xplm_WindowContentTypeBrowser`, SDK 4.4.0). It provides a JavaScript API bridge for apps to interact with X-Plane datarefs, native slide-out notifications, and both desktop and VR modes.
 
 The library is distributed as a **shared library** (`.dll` on Windows, `.dylib` on macOS, `.so` on Linux) with a stable **C API**, allowing downstream plugins to link against it without C++ ABI coupling. This means plugins can be built with any toolchain — MSVC, MinGW, GCC, or Clang.
 
-The library handles browser lifecycle, flight loop updates, VR mode switching, app discovery, and keyboard focus — your plugin just calls `skyscript_initialize()` and `skyscript_shutdown()`.
+X-Plane renders the page and routes mouse and keyboard input to it; SkyScript handles app discovery, the `window.skyscript` JavaScript API, notifications, flight loop updates and VR mode switching — your plugin just calls `skyscript_initialize()` and `skyscript_shutdown()`.
 
 ## Architecture
 
@@ -13,19 +13,15 @@ src/              → SkyScriptLib (shared library)
 src/skyscript_c.h → Public C API header
 example/          → Example X-Plane plugin using the C API
 apps/             → React/HTML apps loaded at runtime
-lib/<platform>/   → Build-time CEF inputs and platform runtime files
 ```
 
 ## Requirements
 
-- X-Plane SDK 4.2.0
-- CEF tree under `lib/<platform>/cef` for building
+- X-Plane 12.4.4 or newer at runtime
+- X-Plane SDK 4.4.0 or newer to build
 - CMake 3.25.1+, C++23
 
-SkyScript uses the CEF runtime already shipped with X-Plane by default. Set
-`SKYSCRIPT_PLUGIN_LOCAL_CEF=1` when running `build_platforms.sh`, or
-`-DSKYSCRIPT_PLUGIN_LOCAL_CEF=ON` when configuring CMake, to build and package
-a plugin that loads CEF from the plugin directory instead.
+No CEF tree or runtime is needed: X-Plane owns the browser.
 
 ## License
 
@@ -45,7 +41,7 @@ SkyScript is licensed under the MIT License.
 #include "skyscript_c.h"
 
 // In XPluginStart:
-skyscript_initialize();       // Registers flight loop, VR monitoring, cursor
+skyscript_initialize();       // Registers flight loop and VR monitoring
 
 // When aircraft loads:
 skyscript_load_apps_from_directory();  // Scans apps/ folder, creates windows

@@ -1,69 +1,57 @@
 #ifndef BROWSER_H
 #define BROWSER_H
 
-#include <filesystem>
+#include <string>
 #include <XPLMDisplay.h>
 #include <XPLMDefs.h>
 
-#include "button.h"
-
-#include <include/cef_app.h>
-#include <include/cef_request_context.h>
-#include "browser_handler.h"
 #include "xplm_bridge.h"
 
 class App;
 
+// The page inside an app window.
+//
+// X-Plane renders the page, routes input to it and owns the Chromium instance
+// (xplm_WindowContentTypeBrowser, SDK 4.4.0). What is left for us is choosing
+// what it loads, injecting the window.skyscript API once a page has loaded, and
+// answering that API through a single xplane.skyscript() browser function.
 class Browser {
 private:
-    int textureId;
-    float offsetStart;
-    float offsetEnd;
+    App *app;
+    XPLMWindowID window;
     float lastGpsUpdateTime;
-    Button *backButton;
     XplmBridge *xplmBridge;
-    CefRefPtr<BrowserHandler> handler;
-    CefRefPtr<CefRequestContext> requestContext;
-    std::string localAppHost;
-    std::filesystem::path localAppRoot;
-    void allocateTexture();
-    bool createBrowser();
+    void injectScript(const std::string& script);
+    void injectPageScripts();
     void updateGPSLocation();
-    CefMouseEvent getMouseEvent(float normalizedX, float normalizedY);
-    void registerLocalAppRoot();
-    void positionBackButton();
-    std::string prepareUrlForLoad(const std::string& url);
-    
+    static const char* handleBrowserCall(XPLMWindowID inWindowID, const char* inJSON, void* inRefcon);
+
 public:
-    Browser();
-    
+    explicit Browser(App *app);
+
     std::string currentUrl;
-    
+
     void initialize();
+    // Bind to the browser window once App has created it: registers the bridge
+    // function and loads the current URL. X-Plane queues the load until its
+    // webview is ready, so this is safe straight after XPLMCreateWindowEx.
+    void attach(XPLMWindowID window);
     void destroy();
     void visibilityWillChange(bool becomesVisible);
     void update();
-    void draw();
-    void resize();
-    // Where the page sits in the window, normalized. The App owns this because
-    // it owns the chrome drawn above and below the page; the browser uses it
-    // both to place its quad and to map a window point onto a page point, so
-    // the two cannot disagree about where the page is.
-    void setPageExtent(float start, float end);
-    void loadUrl(std::string url);
-    bool hasInputFocus();
-    void setFocus(bool focus);
-    void mouseMove(float normalizedX, float normalizedY);
-    bool click(XPLMMouseStatus status, float normalizedX, float normalizedY);
-    void scroll(float normalizedX, float normalizedY, int clicks, bool horizontal);
-    void key(unsigned char key, unsigned char virtualKey, XPLMKeyFlags flags = 0);
-    bool goBack();
-    void showDevTools();
-    CursorType cursor();
+    void loadUrl(const std::string& url);
+    void refresh(bool ignoreCache);
+    void onLoadFinished(const std::string& url);
+    void onLoadError(const std::string& url, const std::string& error);
 
     // Message passing
     void onMessage(const std::string& channel, MessageHandler handler);
     void postMessage(const std::string& channel, const std::string& payload);
+
+    // A file:// URL for a local path, valid on every platform. Spaces and other
+    // reserved characters are percent-encoded, and Windows drive paths get the
+    // third slash ("file:///C:/...") a bare concatenation would miss.
+    static std::string fileUrlForPath(const std::string& path);
 };
 
 #endif

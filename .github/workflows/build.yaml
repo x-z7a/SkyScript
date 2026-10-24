@@ -9,10 +9,11 @@ on:
   workflow_dispatch:
 
 env:
-  CEF_VERSION: "cef_binary_117.2.5%2Bgda4c36a%2Bchromium-117.0.5938.152"
-  CEF_CACHE_VERSION: "117.2.5-gda4c36a-chromium-117.0.5938.152"
-  XPLANE_SDK_URL: "https://developer.x-plane.com/wp-content/plugins/code-sample-generation/sdk_zip_files/XPSDK420.zip"
-  XPLANE_SDK_VERSION: "420"
+  # SkyScript needs SDK 4.4.0 or newer (browser windows).
+  # The XPLANE_SDK_URL repository variable overrides where it comes from.
+  XPLANE_SDK_URL: ${{ vars.XPLANE_SDK_URL || 'https://www.x-plane.com/wp-content/uploads/2026/10/XPSDK440-b5.zip' }}
+  # Part of the cache key: change it whenever the URL points at a new SDK.
+  XPLANE_SDK_VERSION: "440-b5"
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -24,41 +25,6 @@ jobs:
       - uses: actions/checkout@v4
 
       # ---- Dependencies ----
-      - name: Cache CEF (macOS arm64)
-        id: cache-cef-mac
-        uses: actions/cache@v4
-        with:
-          path: lib/mac_x64/cef
-          key: cef-macosarm64-${{ env.CEF_CACHE_VERSION }}
-
-      - name: Download CEF (macOS arm64)
-        if: steps.cache-cef-mac.outputs.cache-hit != 'true'
-        run: |
-          curl -fSL -o cef_mac.tar.bz2 \
-            "https://cef-builds.spotifycdn.com/${CEF_VERSION}_macosarm64.tar.bz2"
-          mkdir -p cef_mac_extract
-          tar xjf cef_mac.tar.bz2 -C cef_mac_extract --strip-components=1
-          mkdir -p lib/mac_x64/cef
-          cp -R cef_mac_extract/include lib/mac_x64/cef/
-          cp -R cef_mac_extract/Release lib/mac_x64/cef/
-          cp -R cef_mac_extract/libcef_dll lib/mac_x64/cef/
-          cp -R cef_mac_extract/cmake lib/mac_x64/cef/
-          cp cef_mac_extract/CMakeLists.txt lib/mac_x64/cef/
-          cp cef_mac_extract/LICENSE.txt lib/mac_x64/cef/
-          cp cef_mac_extract/README.txt lib/mac_x64/cef/
-
-      - name: Build CEF wrapper (macOS)
-        if: steps.cache-cef-mac.outputs.cache-hit != 'true'
-        run: |
-          cd lib/mac_x64/cef
-          cmake -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_OSX_ARCHITECTURES=arm64 \
-                -DPROJECT_ARCH=arm64 \
-                -DUSE_SANDBOX=OFF \
-                -Bbuild -H.
-          cmake --build build --target libcef_dll_wrapper --config Release --parallel $(sysctl -n hw.ncpu)
-          cp build/libcef_dll_wrapper/libcef_dll_wrapper.a .
-
       - name: Cache X-Plane SDK
         id: cache-sdk
         uses: actions/cache@v4
@@ -80,7 +46,6 @@ jobs:
           cmake \
             -DCMAKE_TOOLCHAIN_FILE=toolchain-mac.cmake \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DSKYSCRIPT_PLUGIN_LOCAL_CEF=OFF \
             -DXPLANE_VERSION=12 \
             -DXPLANE_SDK_ROOT="${{ github.workspace }}/SDK" \
             -Bbuild/mac -H.
@@ -142,46 +107,11 @@ jobs:
           apt-get install -y \
             build-essential cmake pkg-config zip unzip git curl \
             libgl-dev libssl-dev libcurl4-openssl-dev libudev-dev \
-            python3 ca-certificates libnss3 libatk-bridge2.0-0
+            python3 ca-certificates
 
       - uses: actions/checkout@v4
 
       # ---- Dependencies ----
-      - name: Cache CEF (Linux x64)
-        id: cache-cef-lin
-        uses: actions/cache@v4
-        with:
-          path: lib/lin_x64/cef
-          key: cef-linux64-${{ env.CEF_CACHE_VERSION }}
-
-      - name: Download CEF (Linux x64)
-        if: steps.cache-cef-lin.outputs.cache-hit != 'true'
-        run: |
-          curl -fSL -o cef_lin.tar.bz2 \
-            "https://cef-builds.spotifycdn.com/${CEF_VERSION}_linux64.tar.bz2"
-          mkdir -p cef_lin_extract
-          tar xjf cef_lin.tar.bz2 -C cef_lin_extract --strip-components=1
-          mkdir -p lib/lin_x64/cef
-          cp -R cef_lin_extract/include lib/lin_x64/cef/
-          cp -R cef_lin_extract/Release lib/lin_x64/cef/
-          cp -R cef_lin_extract/libcef_dll lib/lin_x64/cef/
-          cp -R cef_lin_extract/cmake lib/lin_x64/cef/
-          cp cef_lin_extract/CMakeLists.txt lib/lin_x64/cef/
-          cp cef_lin_extract/LICENSE.txt lib/lin_x64/cef/
-          cp cef_lin_extract/README.txt lib/lin_x64/cef/
-
-      - name: Build CEF wrapper (Linux)
-        if: steps.cache-cef-lin.outputs.cache-hit != 'true'
-        run: |
-          cd lib/lin_x64/cef
-          cmake -DCMAKE_BUILD_TYPE=Release \
-                -DPROJECT_ARCH=x86_64 \
-                -DUSE_SANDBOX=OFF \
-                -Bbuild -H.
-          cmake --build build --target libcef_dll_wrapper --config Release --parallel $(nproc)
-          mkdir -p libcef_dll_wrapper
-          cp build/libcef_dll_wrapper/libcef_dll_wrapper.a libcef_dll_wrapper/
-
       - name: Cache X-Plane SDK
         id: cache-sdk-lin
         uses: actions/cache@v4
@@ -203,7 +133,6 @@ jobs:
           cmake \
             -DCMAKE_CXX_FLAGS='-march=x86-64' \
             -DCMAKE_TOOLCHAIN_FILE=toolchain-lin.cmake \
-            -DSKYSCRIPT_PLUGIN_LOCAL_CEF=OFF \
             -DXPLANE_VERSION=12 \
             -DXPLANE_SDK_ROOT="$(pwd)/SDK" \
             -Bbuild/lin -H.
@@ -239,50 +168,6 @@ jobs:
           arch: x64
 
       # ---- Dependencies ----
-      - name: Cache CEF (Windows x64)
-        id: cache-cef-win
-        uses: actions/cache@v4
-        with:
-          path: lib/win_x64/cef
-          key: cef-windows64-${{ env.CEF_CACHE_VERSION }}-msvc
-
-      - name: Download CEF (Windows x64)
-        if: steps.cache-cef-win.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          $url = "https://cef-builds.spotifycdn.com/cef_binary_117.2.5%2Bgda4c36a%2Bchromium-117.0.5938.152_windows64.tar.bz2"
-          Invoke-WebRequest -Uri $url -OutFile cef_win.tar.bz2
-          mkdir cef_win_extract
-          tar xjf cef_win.tar.bz2 -C cef_win_extract --strip-components=1
-          New-Item -ItemType Directory -Force -Path lib/win_x64/cef
-          Copy-Item -Recurse cef_win_extract/include lib/win_x64/cef/
-          Copy-Item -Recurse cef_win_extract/Release lib/win_x64/cef/
-          Copy-Item -Recurse cef_win_extract/libcef_dll lib/win_x64/cef/
-          Copy-Item -Recurse cef_win_extract/cmake lib/win_x64/cef/
-          Copy-Item cef_win_extract/CMakeLists.txt lib/win_x64/cef/
-          Copy-Item cef_win_extract/LICENSE.txt lib/win_x64/cef/
-          Copy-Item cef_win_extract/README.txt lib/win_x64/cef/
-
-      - name: Build CEF wrapper (Windows/MSVC)
-        run: |
-          if (Test-Path "lib/win_x64/cef/libcef_dll_wrapper/libcef_dll_wrapper.lib") {
-            Write-Host "CEF wrapper already present in cache."
-            exit 0
-          }
-
-          cmake -S lib/win_x64/cef -B lib/win_x64/cef/build -DPROJECT_ARCH=x86_64 -DUSE_SANDBOX=OFF
-          cmake --build lib/win_x64/cef/build --config Release --target libcef_dll_wrapper --parallel
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-          }
-
-          New-Item -ItemType Directory -Force -Path lib/win_x64/cef/libcef_dll_wrapper | Out-Null
-          $wrapperLib = Get-ChildItem -Path lib/win_x64/cef/build -Recurse -Filter libcef_dll_wrapper.lib | Select-Object -First 1
-          if (-not $wrapperLib) {
-            throw "libcef_dll_wrapper.lib not found after the CEF wrapper build"
-          }
-          Copy-Item $wrapperLib.FullName lib/win_x64/cef/libcef_dll_wrapper/
-
       - name: Cache X-Plane SDK
         id: cache-sdk-win
         uses: actions/cache@v4
@@ -312,7 +197,7 @@ jobs:
 
       - name: Build SkyScript (Windows x64)
         run: |
-          cmake -S . -B build/win -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DSKYSCRIPT_PLUGIN_LOCAL_CEF=OFF -DXPLANE_VERSION=12 -DXPLANE_SDK_ROOT="$env:GITHUB_WORKSPACE\SDK"
+          cmake -S . -B build/win -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DXPLANE_VERSION=12 -DXPLANE_SDK_ROOT="$env:GITHUB_WORKSPACE\SDK"
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
@@ -415,18 +300,9 @@ jobs:
 
           mkdir -p "$LIB_DIST/lib/mac_x64" "$LIB_DIST/lib/lin_x64" "$LIB_DIST/lib/win_x64"
           cp artifacts/lib_mac_x64/libSkyScriptLib.dylib "$LIB_DIST/lib/mac_x64/"
-          if [ -d artifacts/lib_mac_x64/lib/mac_x64/cef ]; then
-            cp -R artifacts/lib_mac_x64/lib/mac_x64/cef "$LIB_DIST/lib/mac_x64/"
-          fi
           cp artifacts/lib_lin_x64/libSkyScriptLib.so "$LIB_DIST/lib/lin_x64/"
-          if [ -d artifacts/lib_lin_x64/lib/lin_x64/cef ]; then
-            cp -R artifacts/lib_lin_x64/lib/lin_x64/cef "$LIB_DIST/lib/lin_x64/"
-          fi
           cp artifacts/lib_win_x64/SkyScriptLib.dll "$LIB_DIST/lib/win_x64/"
           cp artifacts/lib_win_x64/SkyScriptLib.lib "$LIB_DIST/lib/win_x64/"
-          if [ -d artifacts/lib_win_x64/lib/win_x64/cef ]; then
-            cp -R artifacts/lib_win_x64/lib/win_x64/cef "$LIB_DIST/lib/win_x64/"
-          fi
 
           # Copy Go bindings
           cp go.mod "$LIB_DIST/"

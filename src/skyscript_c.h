@@ -31,24 +31,25 @@ typedef enum {
 /* App configuration for creating windows.
  *
  * Start from skyscript_default_config() rather than zero-initializing: a zeroed
- * struct reads as "titled window, no notification sound, zero timeout", which
- * are choices rather than defaults. */
+ * struct reads as "no notification sound, zero timeout", which are choices
+ * rather than defaults.
+ *
+ * Fields marked "unused" are kept so the struct's layout does not change, but
+ * have no effect: X-Plane owns the browser and the window chrome. */
 typedef struct {
     const char* homepage;        /* URL to load, or NULL for default */
-    int audio_muted;             /* 1 = muted, 0 = unmuted */
-    unsigned short minimum_width;
-    unsigned char scroll_speed;
-    const char* forced_language; /* BCP-47 language tag, or NULL */
-    const char* user_agent;      /* Custom user-agent string, or NULL */
+    int audio_muted;             /* Unused */
+    unsigned short minimum_width; /* Minimum window width; never below 640 */
+    unsigned char scroll_speed;  /* Unused */
+    const char* forced_language; /* Unused */
+    const char* user_agent;      /* navigator.userAgent override, or NULL */
     int hide_addressbar;         /* 1 = hidden, 0 = shown */
-    unsigned char framerate;     /* Target framerate (0 = default 15) */
+    unsigned char framerate;     /* Unused */
     unsigned short width;        /* Initial window width (0 = default 1024) */
     unsigned short height;       /* Initial window height (0 = default 768) */
     int console_logging;         /* 1 = forward console.log to Log.txt */
-    /* Window chrome. Titleless windows draw their own background and carry a
-       drag strip along the top instead of an X-Plane title bar. */
-    int window_titleless;        /* 1 = self-decorated, 0 = X-Plane title bar */
-    float window_opacity;        /* Background opacity; 0 = default */
+    int window_titleless;        /* Unused: windows always use X-Plane's title bar */
+    float window_opacity;        /* Unused */
     /* Defaults for notifications raised on this window. Each is overridable per
        notification via SkyScriptNotificationOptions. */
     SkyScriptNotificationCorner notification_corner;
@@ -136,7 +137,7 @@ SKYSCRIPT_API void skyscript_app_dismiss_notification(SkyScriptApp app);
    registered via window.skyscript.onMessage(channel, callback).
 
    It may be called from any thread. The message is queued and delivered on the
-   next flight loop, so a worker thread never touches CEF directly. The payload
+   next flight loop, so a worker thread never touches the browser. The payload
    must be a JSON document: it is parsed in the page, not evaluated. */
 typedef void (*SkyScriptMessageCallback)(
     const char* channel,

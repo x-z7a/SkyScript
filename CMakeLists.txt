@@ -20,14 +20,23 @@ IF(NOT XPLANE_VERSION EQUAL 12)
     MESSAGE(FATAL_ERROR "SkyScript only supports X-Plane 12 builds")
 ENDIF()
 
-OPTION(SKYSCRIPT_PLUGIN_LOCAL_CEF "Load/package CEF from the plugin directory instead of using X-Plane's CEF runtime" OFF)
-
 SET(DEFAULT_XPLANE_SDK_ROOT "/Volumes/storage/git/SDK")
 SET(XPLANE_SDK_ROOT "${DEFAULT_XPLANE_SDK_ROOT}" CACHE PATH "Path to the X-Plane SDK root")
 SET(XPLANE_INCLUDES_PATH "${XPLANE_SDK_ROOT}/CHeaders")
 
 IF(NOT EXISTS "${XPLANE_INCLUDES_PATH}/XPLM")
     MESSAGE(FATAL_ERROR "XPLANE_SDK_ROOT is invalid: ${XPLANE_SDK_ROOT}")
+ENDIF()
+
+# Browser windows (xplm_WindowContentTypeBrowser) and XPLMReturnString, which
+# browser-function replies must go through, arrived in SDK 4.4.0. An older SDK
+# fails much later with a wall of undeclared identifiers, so say so here.
+FILE(READ "${XPLANE_INCLUDES_PATH}/XPLM/XPLMDisplay.h" XPLM_DISPLAY_HEADER)
+FILE(READ "${XPLANE_INCLUDES_PATH}/XPLM/XPLMUtilities.h" XPLM_UTILITIES_HEADER)
+STRING(FIND "${XPLM_DISPLAY_HEADER}" "XPLMWindowSetURL" XPLM_HAS_BROWSER_WINDOWS)
+STRING(FIND "${XPLM_UTILITIES_HEADER}" "XPLMReturnString" XPLM_HAS_RETURN_STRING)
+IF(XPLM_HAS_BROWSER_WINDOWS EQUAL -1 OR XPLM_HAS_RETURN_STRING EQUAL -1)
+    MESSAGE(FATAL_ERROR "SkyScript needs the X-Plane SDK 4.4.0 or newer; ${XPLANE_SDK_ROOT} has no browser window API")
 ENDIF()
 
 IF(APPLE)
@@ -38,15 +47,11 @@ ELSEIF(WIN32)
     SET(DIRECTORY_PREFIX "win_x64")
 ENDIF()
 
-SET(CEF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/lib/${DIRECTORY_PREFIX}/cef")
-
 IF(APPLE)
     SET(XPLM_LIBRARY "${XPLANE_SDK_ROOT}/Libraries/Mac/XPLM.framework/XPLM")
     SET(XPWIDGETS_LIBRARY "${XPLANE_SDK_ROOT}/Libraries/Mac/XPWidgets.framework/XPWidgets")
-    SET(CEF_LIBRARY "${CEF_ROOT}/Release/Chromium Embedded Framework.framework/Chromium Embedded Framework")
-    SET(CEF_WRAPPER "${CEF_ROOT}/libcef_dll_wrapper.a")
 
-    FOREACH(required_file ${XPLM_LIBRARY} ${XPWIDGETS_LIBRARY} ${CEF_LIBRARY} ${CEF_WRAPPER})
+    FOREACH(required_file ${XPLM_LIBRARY} ${XPWIDGETS_LIBRARY})
         IF(NOT EXISTS "${required_file}")
             MESSAGE(FATAL_ERROR "Missing required dependency: ${required_file}")
         ENDIF()
@@ -54,12 +59,9 @@ IF(APPLE)
 
     FIND_PACKAGE(CURL REQUIRED)
     SET(CURL_LIBRARY CURL::libcurl)
-    FIND_LIBRARY(COCOA_LIBRARY Cocoa REQUIRED)
     FIND_LIBRARY(OPENGL_LIBRARY OpenGL REQUIRED)
 ELSEIF(WIN32)
     SET(XPLANE_LIBRARY_PATH "${XPLANE_SDK_ROOT}/Libraries/Win")
-    FIND_LIBRARY(CEF_LIBRARY NAMES libcef PATHS "${CEF_ROOT}/Release" NO_DEFAULT_PATH REQUIRED)
-    FIND_LIBRARY(CEF_WRAPPER NAMES libcef_dll_wrapper PATHS "${CEF_ROOT}/libcef_dll_wrapper" NO_DEFAULT_PATH REQUIRED)
     FIND_LIBRARY(OPENGL_LIBRARY NAMES opengl32 REQUIRED)
     IF(MSVC)
         FIND_PACKAGE(CURL CONFIG REQUIRED)
@@ -75,8 +77,6 @@ ELSEIF(UNIX)
     FIND_LIBRARY(OPENSSL_LIBRARY NAMES libssl.so PATHS "/usr/lib/x86_64-linux-gnu")
     FIND_LIBRARY(OPENSSL_CRYPTO_LIBRARY NAMES libcrypto.so PATHS "/usr/lib/x86_64-linux-gnu")
     FIND_LIBRARY(CURL_LIBRARY NAMES libcurl.so PATHS "/usr/lib/x86_64-linux-gnu")
-    FIND_LIBRARY(CEF_LIBRARY libcef.so PATHS "${CEF_ROOT}/Release" NO_DEFAULT_PATH)
-    SET(CEF_WRAPPER "${CEF_ROOT}/libcef_dll_wrapper/libcef_dll_wrapper.a")
     FIND_PACKAGE(OpenGL REQUIRED)
     FIND_LIBRARY(XPLM_LIBRARY XPLM_64.so PATHS "${XPLANE_LIBRARY_PATH}" REQUIRED)
     FIND_LIBRARY(XPWIDGETS_LIBRARY XPWidgets_64.so PATHS "${XPLANE_LIBRARY_PATH}" REQUIRED)
@@ -111,24 +111,12 @@ FUNCTION(FIND_SOURCE_FILES return_list base_dir)
 ENDFUNCTION()
 
 FUNCTION(use_runtime_paths target_name)
-    TARGET_COMPILE_DEFINITIONS(${target_name} PRIVATE SKYSCRIPT_PLUGIN_LOCAL_CEF=$<BOOL:${SKYSCRIPT_PLUGIN_LOCAL_CEF}>)
-
     IF(APPLE)
         SET_TARGET_PROPERTIES(${target_name} PROPERTIES
             BUILD_RPATH "@loader_path"
             BUILD_WITH_INSTALL_RPATH TRUE
             INSTALL_RPATH "@loader_path"
         )
-        IF(SKYSCRIPT_PLUGIN_LOCAL_CEF)
-            ADD_CUSTOM_COMMAND(TARGET ${target_name} POST_BUILD
-                COMMAND install_name_tool
-                    -change
-                    "@executable_path/../Frameworks/Chromium Embedded Framework.framework/Chromium Embedded Framework"
-                    "@loader_path/Chromium Embedded Framework.framework/Chromium Embedded Framework"
-                    "$<TARGET_FILE:${target_name}>"
-                VERBATIM
-            )
-        ENDIF()
     ELSEIF(UNIX)
         SET_TARGET_PROPERTIES(${target_name} PROPERTIES
             BUILD_RPATH "\$ORIGIN"
@@ -146,7 +134,7 @@ FUNCTION(add_xplane_sdk_definitions library_name library_version)
         TARGET_COMPILE_OPTIONS(${library_name} PRIVATE "-static")
         TARGET_LINK_OPTIONS(${library_name} PRIVATE "-static-libstdc++" "-static-libgcc")
     ELSEIF(WIN32)
-        TARGET_COMPILE_DEFINITIONS(${library_name} PUBLIC -DAPL=0 -DIBM=1 -DLIN=0 -DUSING_CEF_SHARED=1 -DNOMINMAX -DWIN32_LEAN_AND_MEAN -DXPLANE_VERSION=${XPLANE_VERSION})
+        TARGET_COMPILE_DEFINITIONS(${library_name} PUBLIC -DAPL=0 -DIBM=1 -DLIN=0 -DNOMINMAX -DWIN32_LEAN_AND_MEAN -DXPLANE_VERSION=${XPLANE_VERSION})
         IF(MSVC)
             TARGET_COMPILE_OPTIONS(${library_name} PRIVATE "/bigobj")
             TARGET_LINK_OPTIONS(${library_name} PRIVATE "/FORCE:MULTIPLE")
@@ -169,9 +157,13 @@ FUNCTION(add_xplane_sdk_definitions library_name library_version)
     ELSEIF(library_version EQUAL 410)
         TARGET_COMPILE_DEFINITIONS(${library_name} PUBLIC -DXPLM200=1 -DXPLM210=1 -DXPLM300=1 -DXPLM301=1 -DXPLM400=1 -DXPLM410=1)
     ELSEIF(library_version EQUAL 420)
-        TARGET_COMPILE_DEFINITIONS(${library_name} PUBLIC -DXPLM200=1 -DXPLM210=1 -DXPLM300=1 -DXPLM301=1 -DXPLM400=1 -DXPLM410=1 -DXPLM411=1)
+        TARGET_COMPILE_DEFINITIONS(${library_name} PUBLIC -DXPLM200=1 -DXPLM210=1 -DXPLM300=1 -DXPLM301=1 -DXPLM400=1 -DXPLM410=1 -DXPLM411=1 -DXPLM420=1)
+    ELSEIF(library_version EQUAL 430)
+        TARGET_COMPILE_DEFINITIONS(${library_name} PUBLIC -DXPLM200=1 -DXPLM210=1 -DXPLM300=1 -DXPLM301=1 -DXPLM400=1 -DXPLM410=1 -DXPLM411=1 -DXPLM420=1 -DXPLM430=1)
+    ELSEIF(library_version EQUAL 440)
+        TARGET_COMPILE_DEFINITIONS(${library_name} PUBLIC -DXPLM200=1 -DXPLM210=1 -DXPLM300=1 -DXPLM301=1 -DXPLM400=1 -DXPLM410=1 -DXPLM411=1 -DXPLM420=1 -DXPLM430=1 -DXPLM440=1)
     ELSE()
-        MESSAGE(FATAL_ERROR "Library version one of: 200, 210, 300, 301, 400, 410, 420")
+        MESSAGE(FATAL_ERROR "Library version one of: 200, 210, 300, 301, 400, 410, 420, 430, 440")
     ENDIF()
 
     TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC "${XPLANE_INCLUDES_PATH}/XPLM" "${XPLANE_INCLUDES_PATH}/Widgets" "${XPLANE_INCLUDES_PATH}/Wrappers")
@@ -233,9 +225,8 @@ FUNCTION(add_xplane_plugin library_name library_version src_dir)
         SET_PROPERTY(TARGET ${library_name} APPEND_STRING PROPERTY LINK_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -rdynamic -nodefaultlibs -undefined_warning -fPIC -fvisibility=hidden")
     ENDIF()
 
-    TARGET_LINK_LIBRARIES(${library_name} PUBLIC ${XPLM_LIBRARY} ${XPWIDGETS_LIBRARY} ${CEF_WRAPPER} ${CEF_LIBRARY} ${CURL_LIBRARY} ${OPENGL_LIBRARY} ${COCOA_LIBRARY} ${OPENSSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY})
+    TARGET_LINK_LIBRARIES(${library_name} PUBLIC ${XPLM_LIBRARY} ${XPWIDGETS_LIBRARY} ${CURL_LIBRARY} ${OPENGL_LIBRARY} ${OPENSSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY})
     TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC "${XPLANE_INCLUDES_PATH}/XPLM" "${XPLANE_INCLUDES_PATH}/Widgets" "${XPLANE_INCLUDES_PATH}/Wrappers")
-    TARGET_INCLUDE_DIRECTORIES(${library_name} PRIVATE "${CEF_ROOT}")
     HEADER_DIRECTORIES(header_dir_list ${src_dir})
     TARGET_INCLUDE_DIRECTORIES(${library_name} PRIVATE ${header_dir_list})
     use_runtime_paths(${library_name})
@@ -275,9 +266,8 @@ FUNCTION(add_skyscript_library library_name library_version src_dir)
         ENDIF()
     ENDIF()
 
-    TARGET_LINK_LIBRARIES(${library_name} PUBLIC ${XPLM_LIBRARY} ${XPWIDGETS_LIBRARY} ${CEF_WRAPPER} ${CEF_LIBRARY} ${CURL_LIBRARY} ${OPENGL_LIBRARY} ${COCOA_LIBRARY} ${OPENSSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY})
+    TARGET_LINK_LIBRARIES(${library_name} PUBLIC ${XPLM_LIBRARY} ${XPWIDGETS_LIBRARY} ${CURL_LIBRARY} ${OPENGL_LIBRARY} ${OPENSSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY})
     TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC "${XPLANE_INCLUDES_PATH}/XPLM" "${XPLANE_INCLUDES_PATH}/Widgets" "${XPLANE_INCLUDES_PATH}/Wrappers")
-    TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC "${CEF_ROOT}")
     HEADER_DIRECTORIES(header_dir_list ${src_dir})
     TARGET_INCLUDE_DIRECTORIES(${library_name} PUBLIC ${header_dir_list})
     # Expose src/ itself so consumers can #include "skyscript_c.h"
@@ -319,10 +309,10 @@ ENDIF()
 MESSAGE(STATUS "SkyScript version: ${GIT_VERSION}")
 
 # Build SkyScript as a shared library
-add_skyscript_library(SkyScriptLib 420 "${CMAKE_CURRENT_SOURCE_DIR}/src")
+add_skyscript_library(SkyScriptLib 440 "${CMAKE_CURRENT_SOURCE_DIR}/src")
 TARGET_COMPILE_DEFINITIONS(SkyScriptLib PUBLIC SKYSCRIPT_VERSION="${GIT_VERSION}")
 
 # Build the example plugin that uses the SkyScript shared library via C API
-add_xplane_plugin(SkyScript 420 "${CMAKE_CURRENT_SOURCE_DIR}/example")
+add_xplane_plugin(SkyScript 440 "${CMAKE_CURRENT_SOURCE_DIR}/example")
 TARGET_LINK_LIBRARIES(SkyScript PUBLIC SkyScriptLib)
 TARGET_COMPILE_DEFINITIONS(SkyScript PRIVATE SKYSCRIPT_VERSION="${GIT_VERSION}")

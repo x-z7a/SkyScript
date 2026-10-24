@@ -1,6 +1,6 @@
 # Getting Started
 
-SkyScript is a shared library that adds CEF browser windows to X-Plane 12 plugins. It exposes a stable C API so downstream plugins can link against it without C++ ABI coupling. This guide covers two topics:
+SkyScript is a shared library that adds browser windows to X-Plane 12 plugins, built on X-Plane's own browser window support (SDK 4.4.0, X-Plane 12.4.4+). It exposes a stable C API so downstream plugins can link against it without C++ ABI coupling. This guide covers two topics:
 
 1. **Integrating the library** into your X-Plane plugin
 2. **Building a web app** that runs inside a SkyScript browser window
@@ -10,7 +10,7 @@ SkyScript is a shared library that adds CEF browser windows to X-Plane 12 plugin
 ### Prerequisites
 
 - CMake 3.25.1+, C or C++ compiler (any toolchain: MSVC, MinGW, GCC, Clang)
-- X-Plane SDK 4.2.0
+- X-Plane SDK 4.4.0 or newer (X-Plane 12.4.4 or newer at runtime)
 - SkyScript shared library (`.dll`/`.dylib`/`.so`) from the library distribution
 
 ### Library Distribution Contents
@@ -66,7 +66,7 @@ PLUGIN_API int XPluginStart(char* name, char* sig, char* desc) {
     strcpy(sig, "com.example.myplugin");
     strcpy(desc, "Plugin with embedded browser");
 
-    skyscript_initialize();   // Registers flight loop, VR monitoring, cursor
+    skyscript_initialize();   // Registers flight loop and VR monitoring
     return 1;
 }
 
@@ -125,11 +125,8 @@ At runtime, the SkyScript shared library must be loadable by the operating syste
 - **macOS**: Place `libSkyScriptLib.dylib` next to your `.xpl` plugin, or in the same `mac_x64/` directory.
 - **Linux**: Place `libSkyScriptLib.so` next to your `.xpl` plugin, or in the same `lin_x64/` directory.
 
-The default library uses the CEF runtime that ships with X-Plane, so no CEF
-runtime files need to be copied beside your plugin. If you build SkyScript with
-`SKYSCRIPT_PLUGIN_LOCAL_CEF=1` or `-DSKYSCRIPT_PLUGIN_LOCAL_CEF=ON`, copy the
-platform CEF runtime files from the same distribution directory beside the
-plugin.
+X-Plane provides the browser itself, so there are no browser runtime files to
+deploy.
 
 For **Go bindings**, the equivalent calls are:
 
@@ -166,7 +163,6 @@ Every app needs a `manifest.yaml` at its root. Create `apps/my-app/manifest.yaml
 ```yaml
 name: My App
 hide_addressbar: true
-framerate: 20
 ```
 
 See the [Manifest Reference](/developer/manifest) for all available fields.
@@ -293,5 +289,5 @@ This compiles the plugin, builds all apps, and copies everything to the X-Plane 
 
 - Read the full [JavaScript API Reference](/developer/api) to learn about `setDataref` and `executeCommand`.
 - Read the [C++ Library API](/developer/cpp-api) for the full reference.
-- Check the [Manifest Reference](/developer/manifest) for options like `user_agent`, `framerate`, and `audio_muted`.
+- Check the [Manifest Reference](/developer/manifest) for options like `user_agent`, `console_logging`, and notification defaults.
 - Look at the [Hello World source](https://github.com/x-z7a/skyscript/tree/main/apps/hello-world) for a more complete example with polling, custom dataref input, and command execution.
