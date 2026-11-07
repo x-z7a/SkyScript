@@ -125,9 +125,11 @@ SKYSCRIPT_API void skyscript_app_dismiss_notification(SkyScriptApp app);
    JavaScript via window.skyscript.postMessage(channel, payload).
 
    The handler receives the JSON payload as a string and must return a
-   JSON response string via *out_response (caller frees) or set
-   *out_error to a non-NULL error string (caller frees) to reject
-   the JS Promise.
+   JSON response string via *out_response or set *out_error to a non-NULL
+   error string to reject the JS Promise. SkyScript frees both, so allocate
+   them with skyscript_strdup, never with your own malloc/strdup: on Windows
+   the library has its own C runtime and heap, and freeing memory from
+   another heap corrupts it and crashes X-Plane.
 
    The handler is invoked on the thread that pumps SkyScript (the X-Plane
    flight loop) and must return promptly: it blocks that frame. A plugin whose
@@ -148,6 +150,10 @@ typedef void (*SkyScriptMessageCallback)(
     char** out_error,
     void* user_data
 );
+
+/* Returns a copy of s allocated on SkyScript's heap (NULL if s is NULL or
+   allocation fails). Use it for *out_response and *out_error. */
+SKYSCRIPT_API char* skyscript_strdup(const char* s);
 
 SKYSCRIPT_API void skyscript_app_on_message(SkyScriptApp app, const char* channel, SkyScriptMessageCallback callback, void* user_data);
 SKYSCRIPT_API void skyscript_app_post_message(SkyScriptApp app, const char* channel, const char* payload);

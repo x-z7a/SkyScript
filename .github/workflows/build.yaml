@@ -268,6 +268,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install gendef
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64-tools
+
       - name: Build apps
         run: |
           for app_dir in apps/*/; do
@@ -303,6 +306,13 @@ jobs:
           cp artifacts/lib_lin_x64/libSkyScriptLib.so "$LIB_DIST/lib/lin_x64/"
           cp artifacts/lib_win_x64/SkyScriptLib.dll "$LIB_DIST/lib/win_x64/"
           cp artifacts/lib_win_x64/SkyScriptLib.lib "$LIB_DIST/lib/win_x64/"
+
+          # Export list, so consumers can build an import library for a
+          # renamed DLL (MinGW dlltool or MSVC lib /def) instead of patching
+          # the DLL name into a built .xpl.
+          gendef - artifacts/lib_win_x64/SkyScriptLib.dll > "$LIB_DIST/lib/win_x64/SkyScriptLib.def"
+          grep -qE '^LIBRARY "?SkyScriptLib.dll"?' "$LIB_DIST/lib/win_x64/SkyScriptLib.def"
+          grep -qE '^skyscript_strdup( |$)' "$LIB_DIST/lib/win_x64/SkyScriptLib.def"
 
           # Copy Go bindings
           cp go.mod "$LIB_DIST/"
