@@ -492,8 +492,8 @@ void App::registerWindow() {
     int height = config.height > 0 ? config.height : defaultWindowHeight;
     // The manifest size is the page. Titleless chrome sits outside it, so the
     // whole frame is centred and the page placed below the title bar.
-    int chromeTop = config.window_titleless ? titleBarHeight : 0;
-    int chromeBottom = config.window_titleless ? resizeFooterHeight : 0;
+    int chromeTop = framed() ? titleBarHeight : 0;
+    int chromeBottom = framed() ? resizeFooterHeight : 0;
     int frameHeight = height + chromeTop + chromeBottom;
 
     // Zero-initialised: from SDK 4.4.0 a NULL callback means "not interested",
@@ -509,8 +509,12 @@ void App::registerWindow() {
     params.refcon = this;
     params.layer = xplm_WindowLayerFloatingWindows;
     // Self-decorated-resizable gives a titleless window X-Plane's edge resizing
-    // without its title bar; the chrome windows supply the rest.
-    params.decorateAsFloatingWindow = config.window_titleless ? xplm_WindowDecorationSelfDecoratedResizable : xplm_WindowDecorationRoundRectangle;
+    // without its title bar; the chrome windows supply the rest. A chromeless
+    // window is self-decorated without the resizing: X-Plane draws nothing
+    // around it and its size is the plugin's to set.
+    params.decorateAsFloatingWindow = config.window_chromeless
+        ? xplm_WindowDecorationSelfDecorated
+        : (config.window_titleless ? xplm_WindowDecorationSelfDecoratedResizable : xplm_WindowDecorationRoundRectangle);
     params.contentType = xplm_WindowContentTypeBrowser;
     params.browserLoadFinishedFunc = [](XPLMWindowID inWindow, const char *inURL, void *inRefcon) {
         App *app = static_cast<App*>(inRefcon);
@@ -537,19 +541,22 @@ void App::registerWindow() {
         return;
     }
 
-    if (!config.window_titleless) {
+    if (!config.window_titleless && !config.window_chromeless) {
         XPLMSetWindowTitle(window, name.c_str());
     }
+    // A chromeless window is sized by its plugin, typically to fit what it is
+    // showing, so the page-sized floor that keeps a framed window usable would
+    // only get in the way.
     XPLMSetWindowResizingLimits(
         window,
-        (std::max)(static_cast<int>(config.minimum_width), minimumContentWidth),
-        minimumContentHeight,
+        config.window_chromeless ? 1 : (std::max)(static_cast<int>(config.minimum_width), minimumContentWidth),
+        config.window_chromeless ? 1 : minimumContentHeight,
         4096,
         4096);
 
     browser->attach(window);
     registerOverlayWindow();
-    if (config.window_titleless) {
+    if (framed()) {
         registerChromeWindows();
     }
     applyWindowMode();
@@ -654,6 +661,43 @@ void App::registerChromeWindows() {
     }
 
     syncChromeGeometry();
+}
+
+bool App::framed() const {
+    return config.window_titleless && !config.window_chromeless;
+}
+
+void App::setGeometry(int left, int top, int right, int bottom) {
+    if (!window || right <= left || top <= bottom) {
+        return;
+    }
+    if (Dataref::getInstance()->getCached<int>("sim/graphics/VR/enabled") != 0) {
+        return;
+    }
+
+    int l, t, r, b;
+    XPLMGetWindowGeometry(window, &l, &t, &r, &b);
+    if (l == left && t == top && r == right && b == bottom) {
+        return;
+    }
+    XPLMSetWindowGeometry(window, left, top, right, bottom);
+    syncChromeGeometry();
+    if (notificationOverlay) {
+        syncOverlayGeometry();
+    }
+}
+
+bool App::getGeometry(int *left, int *top, int *right, int *bottom) const {
+    if (!window) {
+        return false;
+    }
+    int l, t, r, b;
+    XPLMGetWindowGeometry(window, &l, &t, &r, &b);
+    if (left) *left = l;
+    if (top) *top = t;
+    if (right) *right = r;
+    if (bottom) *bottom = b;
+    return true;
 }
 
 bool App::usesChrome() const {
@@ -919,6 +963,7 @@ AppConfiguration App::defaultConfig() {
     config.notification_sound = notificationDefaults.playSound;
     config.window_titleless = true;
     config.window_opacity = 0.96f;
+    config.window_chromeless = false;
 #if DEBUG
     config.debug_value_1 = 0.0f;
     config.debug_value_2 = 0.0f;
@@ -1053,6 +1098,9 @@ AppConfiguration App::parseManifest(const std::string& manifestPath, const AppCo
             if (!value.empty()) {
                 config.window_opacity = std::stof(value);
             }
+        }
+        else if (key == "window_chromeless") {
+            config.window_chromeless = (value != "false" && value != "0");
         }
     }
 
