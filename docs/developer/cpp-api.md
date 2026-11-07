@@ -278,8 +278,8 @@ SkyScript provides a bidirectional message channel between the native plugin and
 typedef void (*SkyScriptMessageCallback)(
     const char* channel,
     const char* payload,
-    char** out_response,  // set to malloc'd string on success
-    char** out_error,     // set to malloc'd string on failure
+    char** out_response,  // set with skyscript_strdup() on success
+    char** out_error,     // set with skyscript_strdup() on failure
     void* user_data
 );
 
@@ -294,8 +294,13 @@ void skyscript_app_on_message(
 Register a handler for messages sent from JavaScript via `window.skyscript.postMessage(channel, payload)`.
 
 The handler receives the JSON payload string and must set either `*out_response` or `*out_error`:
-- Set `*out_response` to a `malloc`'d JSON string on success (SkyScript frees it).
-- Set `*out_error` to a `malloc`'d error string on failure (SkyScript frees it).
+- Set `*out_response` to a JSON string on success.
+- Set `*out_error` to an error string on failure.
+
+SkyScript frees both, so allocate them with `skyscript_strdup()`, never with
+your own `malloc` or `strdup`. On Windows the library has its own C runtime and
+heap. Freeing memory from your plugin's heap corrupts it and crashes X-Plane.
+On macOS and Linux it happens to work, so the bug only shows up on Windows.
 
 The handler runs on the simulator's main thread and blocks that frame until it
 returns, so it must not wait on anything slow. If the answer comes from a
@@ -308,11 +313,21 @@ correlating the two with an id of your own.
 ```c
 void on_get_profile(const char* channel, const char* payload,
                     char** out_response, char** out_error, void* user_data) {
-    *out_response = strdup("{\"name\":\"default\",\"version\":1}");
+    *out_response = skyscript_strdup("{\"name\":\"default\",\"version\":1}");
 }
 
 skyscript_app_on_message(app, "getProfile", on_get_profile, NULL);
 ```
+
+### `skyscript_strdup()`
+
+```c
+char* skyscript_strdup(const char* s);
+```
+
+Returns a copy of `s` allocated on SkyScript's heap, or `NULL` if `s` is
+`NULL`. Use it for the strings a message handler returns through
+`*out_response` and `*out_error`.
 
 ### `skyscript_app_post_message()`
 

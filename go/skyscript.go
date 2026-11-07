@@ -52,20 +52,26 @@ func skyscriptMessageCallbackBridge(channel *C.char, payload *C.char, outRespons
 	messageHandlersMu.Unlock()
 
 	if handler == nil {
-		errStr := C.CString("no handler registered")
-		*outError = errStr
+		*outError = libString("no handler registered")
 		return
 	}
 
 	response, err := handler(goPayload)
 	if err != nil {
-		errStr := C.CString(err.Error())
-		*outError = errStr
+		*outError = libString(err.Error())
 		return
 	}
 
-	respStr := C.CString(response)
-	*outResponse = respStr
+	*outResponse = libString(response)
+}
+
+// libString copies s onto the library's heap. SkyScript frees callback
+// results itself, and on Windows it has its own C runtime: memory from
+// C.CString (this binary's malloc) would corrupt its heap.
+func libString(s string) *C.char {
+	tmp := C.CString(s)
+	defer C.free(unsafe.Pointer(tmp))
+	return C.skyscript_strdup(tmp)
 }
 
 // Initialize sets up the SkyScript library and registers the flight loop.

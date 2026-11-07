@@ -2,6 +2,7 @@
 #include "skyscript.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <string>
 
 namespace {
@@ -219,6 +220,14 @@ void skyscript_app_dismiss_notification(SkyScriptApp app) {
     if (app) {
         static_cast<App*>(app)->dismissNotification();
     }
+}
+
+char* skyscript_strdup(const char* s) {
+    if (!s) return nullptr;
+    size_t n = strlen(s) + 1;
+    char* copy = static_cast<char*>(malloc(n));
+    if (copy) memcpy(copy, s, n);
+    return copy;
 }
 
 void skyscript_app_on_message(SkyScriptApp app, const char* channel, SkyScriptMessageCallback callback, void* user_data) {

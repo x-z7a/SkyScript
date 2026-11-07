@@ -25,6 +25,7 @@ SkyScript-lib/
 │   ├── win_x64/
 │   │   ├── SkyScriptLib.dll     # Windows shared library
 │   │   ├── SkyScriptLib.lib     # Windows import library (for MSVC)
+│   │   ├── SkyScriptLib.def     # Export list (for MinGW / a renamed DLL)
 │   ├── mac_x64/
 │   │   └── libSkyScriptLib.dylib
 │   └── lin_x64/

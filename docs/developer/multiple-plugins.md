@@ -70,6 +70,22 @@ What it does per platform:
   `SkyS` + 8 hex + `.dll`, so the name is derived from a hash of the plugin
   name. The file size is unchanged and the PE structure is untouched.
 
+### Windows: name the DLL at link time instead
+
+If you build the `.xpl` yourself, you can skip patching on Windows. Link against
+an import library that already names the renamed DLL. `lib/win_x64/` ships
+`SkyScriptLib.def`, the DLL's export list. Change its `LIBRARY` line and build
+an import library from it:
+
+```sh
+sed 's/^LIBRARY .*/LIBRARY "SkyScript-my-plugin.dll"/' SkyScriptLib.def > my.def
+dlltool -d my.def -l libSkyScript-my-plugin.dll.a      # MinGW
+# or, with MSVC: lib /def:my.def /machine:x64 /out:SkyScript-my-plugin.lib
+```
+
+Link the `.xpl` against that library and ship `SkyScriptLib.dll` renamed to
+`SkyScript-my-plugin.dll`. Any name works, because nothing is patched in place.
+
 ## What is still shared
 
 Renaming stops plugins from sharing an *image*. X-Plane's command namespace is
