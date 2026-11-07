@@ -147,6 +147,9 @@ type AppConfig struct {
 	// WindowOpacity is the page opacity for titleless windows. Zero means the
 	// default.
 	WindowOpacity float32
+	// WindowChromeless removes every frame: no title bar, no chrome, no edge
+	// resizing, no page opacity. Place it with App.SetGeometry.
+	WindowChromeless bool
 
 	// Defaults for notifications raised on this window. Each is overridable per
 	// notification via NotificationOptions.
@@ -195,8 +198,9 @@ func DefaultConfig() AppConfig {
 		Height:         uint16(c.height),
 		ConsoleLogging: c.console_logging != 0,
 
-		WindowTitleless: c.window_titleless != 0,
-		WindowOpacity:   float32(c.window_opacity),
+		WindowTitleless:  c.window_titleless != 0,
+		WindowOpacity:    float32(c.window_opacity),
+		WindowChromeless: c.window_chromeless != 0,
 
 		NotificationCorner:       NotificationCorner(c.notification_corner),
 		NotificationTimeoutSecs:  float32(c.notification_timeout),
@@ -258,8 +262,9 @@ func CreateAppWindow(name, id string, config *AppConfig) *App {
 			height:          C.ushort(config.Height),
 			console_logging: boolToInt(config.ConsoleLogging),
 
-			window_titleless: boolToInt(config.WindowTitleless),
-			window_opacity:   C.float(config.WindowOpacity),
+			window_titleless:  boolToInt(config.WindowTitleless),
+			window_opacity:    C.float(config.WindowOpacity),
+			window_chromeless: boolToInt(config.WindowChromeless),
 
 			notification_corner:        C.SkyScriptNotificationCorner(config.NotificationCorner),
 			notification_timeout:       C.float(config.NotificationTimeoutSecs),
@@ -348,6 +353,22 @@ func (a *App) Show(url string) {
 // Hide hides the browser window.
 func (a *App) Hide() {
 	C.skyscript_app_hide(a.handle)
+}
+
+// SetGeometry places the window in global desktop boxels, y up. It is how a
+// chromeless window is positioned. Ignored in VR.
+func (a *App) SetGeometry(left, top, right, bottom int) {
+	C.skyscript_app_set_geometry(a.handle, C.int(left), C.int(top), C.int(right), C.int(bottom))
+}
+
+// Geometry reports the window's rectangle in global desktop boxels, y up. ok is
+// false when the app has no window.
+func (a *App) Geometry() (left, top, right, bottom int, ok bool) {
+	var l, t, r, b C.int
+	if C.skyscript_app_get_geometry(a.handle, &l, &t, &r, &b) == 0 {
+		return 0, 0, 0, 0, false
+	}
+	return int(l), int(t), int(r), int(b), true
 }
 
 // ShowNotification displays a native SkyScript notification toast.

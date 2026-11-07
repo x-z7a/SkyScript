@@ -59,6 +59,11 @@ typedef struct {
     float notification_opacity;  /* 0.15 to 0.95; 0 = default */
     float notification_slide_seconds; /* Slide-in/out duration; 0 = default */
     int notification_sound;      /* 1 = play the bundled notification sound */
+    /* No frame at all: no title bar, no SkyScript chrome, no edge resizing and
+       no page opacity. Where the page paints nothing the simulator shows
+       through. Place and size it with skyscript_app_set_geometry. Overrides
+       window_titleless. Appended last so the fields above keep their offsets. */
+    int window_chromeless;       /* 1 = chromeless (HUD/overlay) window */
 } SkyScriptAppConfig;
 
 typedef struct {
@@ -114,6 +119,13 @@ SKYSCRIPT_API const char* skyscript_app_get_id(SkyScriptApp app);
 SKYSCRIPT_API int skyscript_app_is_visible(SkyScriptApp app);
 SKYSCRIPT_API void skyscript_app_show(SkyScriptApp app, const char* url);
 SKYSCRIPT_API void skyscript_app_hide(SkyScriptApp app);
+
+/* Window geometry in global desktop boxels, y up: the coordinate space of
+   XPLMGetScreenBoundsGlobal. Setting it moves the chrome and notification
+   overlay with the window. Ignored in VR, where X-Plane places windows.
+   get returns 0 when the app has no window. */
+SKYSCRIPT_API void skyscript_app_set_geometry(SkyScriptApp app, int left, int top, int right, int bottom);
+SKYSCRIPT_API int skyscript_app_get_geometry(SkyScriptApp app, int* left, int* top, int* right, int* bottom);
 
 /* Notifications */
 SKYSCRIPT_API void skyscript_app_show_notification(SkyScriptApp app, const SkyScriptNotificationOptions* options);

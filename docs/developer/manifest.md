@@ -24,6 +24,7 @@ notification_corner: bottom-right
 | `console_logging` | boolean | `true` | Forward `console.log`/`warn`/`error` to X-Plane's `Log.txt`. Set to `false` for noisy apps. |
 | `window_titleless` | boolean | `true` | Use SkyScript's title bar and resize grip instead of X-Plane's title bar. See [Window chrome](#window-chrome). |
 | `window_opacity` | float | `0.96` | Page opacity for titleless windows, `0.2`–`1`. Use `1` for a fully solid window. |
+| `window_chromeless` | boolean | `false` | No frame at all, for HUDs and overlays. See [Chromeless windows](#chromeless-windows). |
 | `notification_corner` | string | `top-right` | Default notification location. Values: `top-left`, `top-right`, `bottom-left`, `bottom-right`. Alias: `notification_location`. |
 | `notification_timeout` | float | `5` | Default auto-dismiss timeout in seconds. Use `0` to keep notifications visible until dismissed. Alias: `notification_timeout_seconds`. |
 | `notification_opacity` | float | `0.78` | Default notification panel opacity. |
@@ -51,6 +52,12 @@ X-Plane draws browser windows itself and nothing can be drawn into them, so the 
 - In VR the chrome is hidden and X-Plane frames the window.
 
 With `window_titleless: false`, X-Plane draws its own title bar and owns resizing, `width`/`height` are the window size, and `window_opacity` is ignored.
+
+## Chromeless windows
+
+With `window_chromeless: true` the page is the whole window: no X-Plane title bar, no SkyScript chrome, no edge resizing, and `window_opacity` is not applied. Wherever the page paints nothing, the simulator shows through, so give `html` and `body` a transparent background and draw your own translucency in CSS.
+
+A chromeless window cannot be moved or resized by the user. Place and size it from the plugin with `skyscript_app_set_geometry`, typically from the screen bounds X-Plane reports and the height the page says it needs. The window still takes every click inside its rectangle, so keep it no larger than its content.
 
 ## Removed options
 

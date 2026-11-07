@@ -51,6 +51,11 @@ struct AppConfiguration {
     bool window_titleless;
     // Page opacity for titleless windows, applied as CSS on the page.
     float window_opacity;
+    // No frame of any kind: no X-Plane title bar, no SkyScript chrome, no edge
+    // resizing and no page opacity. The page is the whole window, so wherever
+    // it paints nothing the simulator shows through. For HUDs and overlays the
+    // plugin places itself with setGeometry. Wins over window_titleless.
+    bool window_chromeless;
 #if DEBUG
     float debug_value_1;
     float debug_value_2;
@@ -96,6 +101,9 @@ private:
     // Glue the title bar and footer windows to the browser window's edges.
     // Called every frame they draw, so they follow X-Plane's own edge resizing.
     void syncChromeGeometry();
+    // Whether this window gets SkyScript's title bar and footer: titleless,
+    // and not chromeless.
+    bool framed() const;
     // Chrome is shown with the browser, and never in VR, where X-Plane frames
     // the window itself.
     void updateChromeVisibility();
@@ -171,6 +179,13 @@ public:
 
     void showBrowser(std::string url = "");
     void hideBrowser();
+
+    // The browser window's rectangle in global desktop boxels, y up -- the
+    // coordinates XPLMGetScreenBoundsGlobal reports. Moving it carries the
+    // chrome and the notification overlay along. Ignored in VR, where X-Plane
+    // places the window.
+    void setGeometry(int left, int top, int right, int bottom);
+    bool getGeometry(int *left, int *top, int *right, int *bottom) const;
     void showNotification(Notification *notification);
     void showNotification(const NotificationOptions& options);
     void dismissNotification();

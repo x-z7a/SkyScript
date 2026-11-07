@@ -107,6 +107,7 @@ Besides the browser settings, the struct carries the window's chrome and the def
 |-------|---------|-------------|
 | `window_titleless` | `1` | SkyScript's own title bar and resize grip instead of X-Plane's title bar. See [Window chrome](./manifest.md#window-chrome). |
 | `window_opacity` | `0.96` | Page opacity for titleless windows. `0` means the default. |
+| `window_chromeless` | `0` | No frame at all, for HUDs and overlays. See [Chromeless windows](./manifest.md#chromeless-windows). |
 | `notification_corner` | `SKYSCRIPT_NOTIFICATION_TOP_RIGHT` | Corner notifications slide from. |
 | `notification_timeout` | `5` | Seconds before auto-dismiss. `0` keeps notifications up until dismissed. |
 | `notification_opacity` | `0.78` | Panel opacity. `0` means the default. |
@@ -200,6 +201,17 @@ void skyscript_app_hide(SkyScriptApp app);
 ```
 
 Show or hide the app window. Pass `NULL` for `url` to show the current page.
+
+### `skyscript_app_set_geometry()` / `skyscript_app_get_geometry()`
+
+```c
+void skyscript_app_set_geometry(SkyScriptApp app, int left, int top, int right, int bottom);
+int skyscript_app_get_geometry(SkyScriptApp app, int* left, int* top, int* right, int* bottom);
+```
+
+The window's rectangle in global desktop boxels, y up: the same space `XPLMGetScreenBoundsGlobal` reports. Setting it carries a titleless window's chrome and any notification along. Ignored in VR, where X-Plane places the window. `get` returns `0` when the app has no window.
+
+This is how a [chromeless](./manifest.md#chromeless-windows) window is placed, for example pinned to the top-right corner and as tall as its content.
 
 ## Notifications
 

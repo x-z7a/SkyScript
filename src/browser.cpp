@@ -364,7 +364,9 @@ void Browser::injectPageScripts() {
     }
 
     float opacity = std::clamp(app->config.window_opacity, 0.2f, 1.0f);
-    if (app->config.window_titleless && opacity < 1.0f) {
+    // A chromeless page does its own transparency: fading the whole document
+    // would fade its text along with its background.
+    if (app->config.window_titleless && !app->config.window_chromeless && opacity < 1.0f) {
         injectScript(opacityScript(opacity));
     }
 

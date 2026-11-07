@@ -55,6 +55,7 @@ SkyScriptAppConfig skyscript_default_config(void) {
     c.console_logging = cpp.console_logging ? 1 : 0;
     c.window_titleless = cpp.window_titleless ? 1 : 0;
     c.window_opacity = cpp.window_opacity;
+    c.window_chromeless = cpp.window_chromeless ? 1 : 0;
     c.notification_corner = toCCorner(cpp.notification_corner);
     c.notification_timeout = cpp.notification_timeout;
     c.notification_opacity = cpp.notification_opacity;
@@ -131,6 +132,7 @@ SkyScriptApp skyscript_create_app_window(const char* name, const char* id, const
         cpp.notification_opacity = config->notification_opacity;
         cpp.notification_slide_seconds = config->notification_slide_seconds;
         cpp.notification_sound = config->notification_sound != 0;
+        cpp.window_chromeless = config->window_chromeless != 0;
         return static_cast<SkyScriptApp>(SkyScript::createAppWindow(name, id, cpp));
     }
     return static_cast<SkyScriptApp>(SkyScript::createAppWindow(name, id));
@@ -198,6 +200,17 @@ void skyscript_app_hide(SkyScriptApp app) {
     if (app) {
         static_cast<App*>(app)->hideBrowser();
     }
+}
+
+void skyscript_app_set_geometry(SkyScriptApp app, int left, int top, int right, int bottom) {
+    if (app) {
+        static_cast<App*>(app)->setGeometry(left, top, right, bottom);
+    }
+}
+
+int skyscript_app_get_geometry(SkyScriptApp app, int* left, int* top, int* right, int* bottom) {
+    if (!app) return 0;
+    return static_cast<App*>(app)->getGeometry(left, top, right, bottom) ? 1 : 0;
 }
 
 void skyscript_app_show_notification(SkyScriptApp app, const SkyScriptNotificationOptions* options) {
