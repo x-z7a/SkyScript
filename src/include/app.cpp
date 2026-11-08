@@ -309,6 +309,9 @@ void App::hideBrowser() {
     windowResizeActive = false;
     closeButtonPressed = false;
 
+    // X-Plane leaves the keyboard with a window it hides, so the keys the user
+    // types next would go to a page they can no longer see.
+    releaseKeyboardFocus();
     if (window) {
         XPLMSetWindowIsVisible(window, 0);
     }
@@ -685,6 +688,18 @@ void App::setGeometry(int left, int top, int right, int bottom) {
     if (notificationOverlay) {
         syncOverlayGeometry();
     }
+}
+
+bool App::hasKeyboardFocus() const {
+    return window && XPLMHasKeyboardFocus(window) != 0;
+}
+
+bool App::releaseKeyboardFocus() {
+    if (!hasKeyboardFocus()) {
+        return false;
+    }
+    XPLMTakeKeyboardFocus(nullptr);
+    return true;
 }
 
 bool App::getGeometry(int *left, int *top, int *right, int *bottom) const {

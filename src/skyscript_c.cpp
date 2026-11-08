@@ -213,6 +213,16 @@ int skyscript_app_get_geometry(SkyScriptApp app, int* left, int* top, int* right
     return static_cast<App*>(app)->getGeometry(left, top, right, bottom) ? 1 : 0;
 }
 
+int skyscript_app_has_keyboard_focus(SkyScriptApp app) {
+    if (!app) return 0;
+    return static_cast<App*>(app)->hasKeyboardFocus() ? 1 : 0;
+}
+
+int skyscript_app_release_keyboard_focus(SkyScriptApp app) {
+    if (!app) return 0;
+    return static_cast<App*>(app)->releaseKeyboardFocus() ? 1 : 0;
+}
+
 void skyscript_app_show_notification(SkyScriptApp app, const SkyScriptNotificationOptions* options) {
     if (!app || !options) return;
 

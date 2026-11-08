@@ -127,6 +127,15 @@ SKYSCRIPT_API void skyscript_app_hide(SkyScriptApp app);
 SKYSCRIPT_API void skyscript_app_set_geometry(SkyScriptApp app, int left, int top, int right, int bottom);
 SKYSCRIPT_API int skyscript_app_get_geometry(SkyScriptApp app, int* left, int* top, int* right, int* bottom);
 
+/* Keyboard focus. X-Plane gives a browser window the keyboard when it is
+   clicked, and keeps it there until something else takes it -- so a window with
+   nothing to type into swallows the user's sim shortcuts. has returns 1 if this
+   app's window holds the keyboard. release hands it back to X-Plane only if
+   this app's window holds it, leaving another window's keyboard alone, and
+   returns 1 if it did. Hiding an app releases its keyboard by itself. */
+SKYSCRIPT_API int skyscript_app_has_keyboard_focus(SkyScriptApp app);
+SKYSCRIPT_API int skyscript_app_release_keyboard_focus(SkyScriptApp app);
+
 /* Notifications */
 SKYSCRIPT_API void skyscript_app_show_notification(SkyScriptApp app, const SkyScriptNotificationOptions* options);
 SKYSCRIPT_API void skyscript_app_dismiss_notification(SkyScriptApp app);
