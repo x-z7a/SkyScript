@@ -186,6 +186,13 @@ public:
     // places the window.
     void setGeometry(int left, int top, int right, int bottom);
     bool getGeometry(int *left, int *top, int *right, int *bottom) const;
+    // Whether this app's browser window holds the keyboard. X-Plane gives a
+    // browser window the keyboard when it is clicked -- and, it seems, at times
+    // when it is only updated -- and keeps it there.
+    bool hasKeyboardFocus() const;
+    // Hands the keyboard back to X-Plane, but only if this app's window holds
+    // it: someone else's text box keeps its keyboard. True if it was released.
+    bool releaseKeyboardFocus();
     void showNotification(Notification *notification);
     void showNotification(const NotificationOptions& options);
     void dismissNotification();

@@ -371,6 +371,18 @@ func (a *App) Geometry() (left, top, right, bottom int, ok bool) {
 	return int(l), int(t), int(r), int(b), true
 }
 
+// HasKeyboardFocus reports whether this app's window holds the keyboard.
+func (a *App) HasKeyboardFocus() bool {
+	return C.skyscript_app_has_keyboard_focus(a.handle) != 0
+}
+
+// ReleaseKeyboardFocus hands the keyboard back to X-Plane if, and only if, this
+// app's window holds it. It reports whether it did. A window with nothing to
+// type into calls this after a click, so the user's sim shortcuts keep working.
+func (a *App) ReleaseKeyboardFocus() bool {
+	return C.skyscript_app_release_keyboard_focus(a.handle) != 0
+}
+
 // ShowNotification displays a native SkyScript notification toast.
 func (a *App) ShowNotification(options NotificationOptions) {
 	cTitle := C.CString(options.Title)

@@ -213,6 +213,17 @@ The window's rectangle in global desktop boxels, y up: the same space `XPLMGetSc
 
 This is how a [chromeless](./manifest.md#chromeless-windows) window is placed, for example pinned to the top-right corner and as tall as its content.
 
+### `skyscript_app_has_keyboard_focus()` / `skyscript_app_release_keyboard_focus()`
+
+```c
+int skyscript_app_has_keyboard_focus(SkyScriptApp app);
+int skyscript_app_release_keyboard_focus(SkyScriptApp app);
+```
+
+X-Plane gives a browser window the keyboard when it is clicked and keeps it there, so a window with nothing to type into -- a HUD, a status strip -- swallows the user's sim shortcuts. `has` returns `1` while this app's window holds the keyboard. `release` hands it back to X-Plane **only if this app's window holds it**, so another plugin's text box is never robbed, and returns `1` if it did.
+
+A plugin whose window takes no typing can simply call `release` once a frame. Hiding an app releases its keyboard on its own.
+
 ## Notifications
 
 SkyScript exposes native toast notifications for app windows. A notification slides in from a configurable corner, renders as a translucent panel, and can auto-dismiss after a timeout.
